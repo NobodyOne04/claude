@@ -29,5 +29,6 @@ t 2 Bash "/usr/bin/git push origin main"
 t 2 Bash "cd /nonexistent && git push"
 t 2 mcp__plugin_github_github__merge_pull_request ""
 t 0 mcp__plugin_github_github__create_pull_request ""
+t 0 Bash "gh repo create NobodyOne04/x --private --source . --remote origin --push"  # new-project skill
 [ "$fail" = 0 ] && echo "guard-main: all checks pass"
 exit "$fail"
