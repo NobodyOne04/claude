@@ -44,3 +44,4 @@ check:
 	@for p in plugins/*/; do claude plugin validate "$$p" || exit 1; done
 	sh plugins/workflow/hooks/test-guard.sh
 	python3 -I plugins/workflow/skills/plugin-audit/audit.py --test
+	python3 -I plugins/workflow/hooks/marketplace-branch.py --test
