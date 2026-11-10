@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """PreToolUse hook: only the user merges into main. Blocks PR merges and pushes to main/master."""
 import json
+import os
 import re
+import shlex
 import subprocess
 import sys
 
@@ -35,6 +37,37 @@ def check_push(args, cwd):
             block(f"pushing to {t}")
 
 
+MERGE_PATTERNS = [
+    r"\bgh\b[^\n;&|]*\bpr\s+merge\b",           # gh pr merge, also with flags in between
+    r"/pulls/\d+/merge\b",                         # REST merge (gh api, curl)
+    r"\b(mergePullRequest|enablePullRequestAutoMerge)\b",  # GraphQL
+    r"/git/refs/heads/(main|master)\b",             # moving the ref directly
+]
+GIT_OPTS_WITH_ARG = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
+SHELLS = {"sh", "bash", "zsh", "eval", "xargs"}
+
+
+def segments(cmd):
+    """Yield each simple command as a token list; a line shlex can't parse only matters if it pushes."""
+    for line in cmd.splitlines():
+        lex = shlex.shlex(line, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        try:
+            toks = list(lex)
+        except ValueError:
+            if re.search(r"\bgit\b.*\bpush\b", line):
+                block("a git push I can't parse; run it on its own line")
+            continue
+        seg = []
+        for t in toks:
+            if t and set(t) <= set(";&|()"):
+                yield seg
+                seg = []
+            else:
+                seg.append(t)
+        yield seg
+
+
 def main():
     d = json.load(sys.stdin)
     tool = d.get("tool_name", "")
@@ -44,12 +77,26 @@ def main():
         return
     cmd = d.get("tool_input", {}).get("command", "")
     cwd = d.get("cwd")
-    if re.search(r"\bgh\s+pr\s+merge\b", cmd) or re.search(r"/pulls/\d+/merge\b", cmd):
-        block("merging a pull request")
-    for seg in re.split(r"&&|\|\||;|\||\n", cmd):
-        m = re.search(r"\bgit\s+(?:-C\s+(\S+)\s+)?push\b(.*)", seg)
-        if m:
-            check_push(m.group(2).split(), m.group(1) or cwd)
+    if any(re.search(p, cmd) for p in MERGE_PATTERNS):
+        block("merging a pull request or moving main")
+    for seg in segments(cmd):
+        if seg[:1] == ["cd"] and len(seg) > 1:
+            cwd = os.path.join(cwd or ".", os.path.expanduser(seg[1]))
+            continue
+        if SHELLS & set(seg) and any(re.search(r"\bgit\b.*\bpush\b", t) for t in seg):
+            block("a git push inside a nested shell; run it directly")
+        if "git" not in seg:
+            continue
+        i, gcwd = seg.index("git") + 1, cwd
+        while i < len(seg) and seg[i].startswith("-"):
+            if seg[i] in GIT_OPTS_WITH_ARG and i + 1 < len(seg):
+                if seg[i] == "-C":
+                    gcwd = os.path.join(gcwd or ".", os.path.expanduser(seg[i + 1]))
+                i += 2
+            else:
+                i += 1
+        if i < len(seg) and seg[i] == "push":
+            check_push(seg[i + 1:], gcwd)
 
 
 main()
