@@ -5,6 +5,22 @@ The repo is a plugin marketplace, so every machine installs from it the same way
 
 ## Install
 
+On a new machine, clone the repo and run `make setup`. It adds this repo as a marketplace,
+installs every plugin (plus `rust-analyzer-lsp` from the official marketplace),
+installs the language servers (brew on macOS, pacman on Arch), installs Chromium for Playwright,
+then runs `make doctor`. Running it again only installs what's missing.
+
+| Target | Does |
+|---|---|
+| `make setup` | all of the below |
+| `make plugins` | marketplace + plugins |
+| `make lsp` | language servers missing from `PATH` |
+| `make browser` | Chromium for the Playwright MCP |
+| `make doctor` | which language servers are missing, MCP connection status |
+| `make check` | validate the marketplace and every plugin |
+
+Or by hand from inside Claude:
+
 ```
 /plugin marketplace add NobodyOne04/claude
 /plugin install workflow@nobodyone
