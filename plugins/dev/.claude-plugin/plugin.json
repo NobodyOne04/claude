@@ -1,6 +1,6 @@
 {
   "name": "dev",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "General development: Context7 docs, Playwright browser, and language servers for Go, Python, Lua, TS/JS, Bash, YAML",
   "author": { "name": "NobodyOne04" },
   "lspServers": {
