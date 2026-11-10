@@ -1,0 +1,39 @@
+{
+  "name": "dev",
+  "version": "0.1.0",
+  "description": "General development: Context7 docs, Playwright browser, and language servers for Go, Python, Lua, TS/JS, Bash, YAML",
+  "author": { "name": "NobodyOne04" },
+  "lspServers": {
+    "gopls": {
+      "command": "gopls",
+      "extensionToLanguage": { ".go": "go" }
+    },
+    "pyright": {
+      "command": "pyright-langserver",
+      "args": ["--stdio"],
+      "extensionToLanguage": { ".py": "python", ".pyi": "python" }
+    },
+    "lua": {
+      "command": "lua-language-server",
+      "extensionToLanguage": { ".lua": "lua" }
+    },
+    "typescript": {
+      "command": "typescript-language-server",
+      "args": ["--stdio"],
+      "extensionToLanguage": {
+        ".ts": "typescript", ".tsx": "typescriptreact", ".mts": "typescript", ".cts": "typescript",
+        ".js": "javascript", ".jsx": "javascriptreact", ".mjs": "javascript", ".cjs": "javascript"
+      }
+    },
+    "bash": {
+      "command": "bash-language-server",
+      "args": ["start"],
+      "extensionToLanguage": { ".sh": "shellscript", ".bash": "shellscript" }
+    },
+    "yaml": {
+      "command": "yaml-language-server",
+      "args": ["--stdio"],
+      "extensionToLanguage": { ".yaml": "yaml", ".yml": "yaml" }
+    }
+  }
+}

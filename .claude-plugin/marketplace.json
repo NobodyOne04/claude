@@ -14,6 +14,11 @@
       "name": "dotfiles",
       "source": "./plugins/dotfiles",
       "description": "My dotfiles (zsh, nvim, tmux, Ghostty, Arch desktop): where things live, house style, checks"
+    },
+    {
+      "name": "dev",
+      "source": "./plugins/dev",
+      "description": "General development: Context7 docs, Playwright browser, language servers for Go, Python, Lua, TS/JS, Bash, YAML"
     }
   ]
 }
