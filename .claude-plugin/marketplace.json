@@ -8,7 +8,7 @@
     {
       "name": "workflow",
       "source": "./plugins/workflow",
-      "description": "How I work: commit style and git habits across all my repos"
+      "description": "How I work: commit style, branch/PR/changelog flow, and a guard so only I merge to main"
     },
     {
       "name": "dotfiles",

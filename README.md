@@ -42,6 +42,8 @@ plugins/
   workflow/                       # how I work, in every repo
     .claude-plugin/plugin.json
     skills/commit-style/SKILL.md
+    skills/github-flow/SKILL.md
+    hooks/hooks.json              # guard-main.py: no merges/pushes to main
 ```
 
 A plugin can hold `skills/`, `agents/`, `commands/`, `hooks/hooks.json` and `.mcp.json` (MCP servers).
@@ -50,13 +52,15 @@ A plugin can hold `skills/`, `agents/`, `commands/`, `hooks/hooks.json` and `.mc
 
 | Plugin | What's in it |
 |---|---|
-| `workflow` | `commit-style`: commit messages and git habits |
+| `workflow` | `commit-style`: commit messages. `github-flow`: typed branches (`feature/`, `bug/`, ...), PR per change, `CHANGELOG.md` line per PR, review-comment summaries. Hook: blocks PR merges and pushes to `main`, only I merge |
 | `dev` | MCP: Context7 (current library docs), Playwright (browser). LSP: Go, Python, Lua, TS/JS, Bash, YAML |
 | `dotfiles` | `dotfiles`: map, house style and checks for my zsh, nvim, tmux, Ghostty and Arch configs |
 
 ## Develop
 
-`make check` validates the marketplace and every plugin.
+`make check` validates the marketplace and every plugin, and self-tests the merge guard.
+
+Changes go through a branch and a PR (see `github-flow`); every PR adds a line to `CHANGELOG.md`.
 
 ## `dev` plugin setup (once per machine)
 

@@ -38,7 +38,7 @@ description: Write git commit messages in my style. Use whenever you are about t
 - Count the marker in the ~72-character limit.
 
 ## Git habits
-- Personal repos: commit directly to `main`.
+- Never commit to `main`: work on a branch and open a PR, see `github-flow`.
 - Commit or push only when asked. "commit and push" means both.
 - A global gitleaks hook runs on every commit. Never bypass it with `--no-verify`;
   if it flags something, stop and show me.
