@@ -45,6 +45,7 @@ plugins/
     skills/commit-style/SKILL.md
     skills/github-flow/SKILL.md
     hooks/hooks.json              # guard-main.py: no merges/pushes to main
+                                  # marketplace-branch.py: warn if this repo isn't on main
 ```
 
 A plugin can hold `skills/`, `agents/`, `commands/`, `hooks/hooks.json` and `.mcp.json` (MCP servers).
@@ -53,7 +54,7 @@ A plugin can hold `skills/`, `agents/`, `commands/`, `hooks/hooks.json` and `.mc
 
 | Plugin | What's in it |
 |---|---|
-| `workflow` | `commit-style`: commit messages. `github-flow`: typed branches (`feature/`, `bug/`, ...), PR per change, `CHANGELOG.md` line per PR, review-comment summaries, cleanup after merge. `plugin-audit`: security check of installed plugins, hooks and MCP servers. Hook: blocks PR merges and pushes to `main`, only I merge |
+| `workflow` | `commit-style`: commit messages. `github-flow`: typed branches (`feature/`, `bug/`, ...), PR per change, `CHANGELOG.md` line per PR, review-comment summaries, cleanup after merge. `plugin-audit`: security check of installed plugins, hooks and MCP servers. Hooks: block PR merges and pushes to `main` (only I merge); warn at session start when a local-folder marketplace isn't on `main` |
 | `ponytail`, `diagram-design` | third-party, pinned to a reviewed commit; run `plugin-audit` before bumping the `sha` |
 | `dev` | MCP: Context7 (current library docs), Playwright (browser). LSP: Go, Python, Lua, TS/JS, Bash, YAML |
 | `dotfiles` | `dotfiles`: map, house style and checks for my zsh, nvim, tmux, Ghostty and Arch configs |
