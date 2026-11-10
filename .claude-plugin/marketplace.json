@@ -1,0 +1,11 @@
+{
+  "name": "nobodyone",
+  "owner": { "name": "NobodyOne04" },
+  "plugins": [
+    {
+      "name": "workflow",
+      "source": "./plugins/workflow",
+      "description": "How I work: commit style and git habits across all my repos"
+    }
+  ]
+}
