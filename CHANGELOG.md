@@ -11,6 +11,9 @@
 - ponytail and diagram-design listed in this marketplace, pinned to a commit
 - CI runs `make check` on every PR
 
+### Changed
+- dotfiles 0.1.1: dotfiles changes go through `github-flow` (branch, PR, I merge) instead of commits to `main`; read each repo's `CLAUDE.md` first
+
 ## [0.1.0] - 2026-11-11
 
 ### Added
