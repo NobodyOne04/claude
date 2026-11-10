@@ -32,7 +32,7 @@ endif
 
 ## browser: Chromium for the Playwright MCP server
 browser:
-	npx -y playwright install chromium
+	npx -y playwright@1.66.0-alpha-2026-11-09 install chromium  # same playwright the pinned MCP uses
 
 ## doctor: show which servers are missing and whether MCP servers connect
 doctor:

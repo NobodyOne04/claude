@@ -79,6 +79,7 @@ One branch is one topic. Something unrelated comes up: new branch, new PR.
   ## Changelog
   <the line you added>
   ```
+- Right after creating it, open it in my browser: `gh pr view <n> --web`.
 - Check that CI passes (`gh pr checks <n>`) before telling me it's ready.
 
 ## Review comments: answer each, then summarize
