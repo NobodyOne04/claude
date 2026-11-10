@@ -1,8 +1,7 @@
 MARKETPLACE := nobodyone
-PLUGINS     := $(notdir $(wildcard plugins/*))
+# every plugin in this marketplace, ours and the pinned third-party ones
+PLUGINS     := $(shell python3 -c "import json;print(' '.join(p['name'] for p in json.load(open('.claude-plugin/marketplace.json'))['plugins']))")
 OFFICIAL    := rust-analyzer-lsp@claude-plugins-official claude-code-setup@claude-plugins-official superpowers@claude-plugins-official security-guidance@claude-plugins-official github@claude-plugins-official feature-dev@claude-plugins-official
-# third-party plugins as <plugin>=<github owner/repo of its marketplace>
-EXTERNAL    := ponytail=DietrichGebert/ponytail diagram-design=cathrynlavery/diagram-design
 
 UNAME := $(shell uname -s)
 
@@ -16,7 +15,6 @@ plugins:
 	claude plugin marketplace add "$(CURDIR)"
 	@for p in $(PLUGINS); do claude plugin install "$$p@$(MARKETPLACE)" || exit 1; done
 	@for p in $(OFFICIAL); do claude plugin install "$$p" || exit 1; done
-	@for e in $(EXTERNAL); do claude plugin install "$${e%%=*}" --marketplace "$${e#*=}" || exit 1; done
 
 ## lsp: install the language servers the dev plugin (and rust-analyzer-lsp) use
 lsp:
@@ -45,3 +43,4 @@ check:
 	claude plugin validate .
 	@for p in plugins/*/; do claude plugin validate "$$p" || exit 1; done
 	sh plugins/workflow/hooks/test-guard.sh
+	python3 -I plugins/workflow/skills/plugin-audit/audit.py --test

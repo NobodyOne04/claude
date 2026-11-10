@@ -19,6 +19,24 @@
       "name": "dev",
       "source": "./plugins/dev",
       "description": "General development: Context7 docs, Playwright browser, language servers for Go, Python, Lua, TS/JS, Bash, YAML"
+    },
+    {
+      "name": "ponytail",
+      "source": {
+        "source": "github",
+        "repo": "DietrichGebert/ponytail",
+        "sha": "96608e078b2d5ea607c5c3b8b5a54d1c1fba6846"
+      },
+      "description": "Third-party (DietrichGebert/ponytail), pinned: lazy senior dev mode"
+    },
+    {
+      "name": "diagram-design",
+      "source": {
+        "source": "github",
+        "repo": "cathrynlavery/diagram-design",
+        "sha": "f2496acbde9f45ccb55c24d4f75210c8a1355df8"
+      },
+      "description": "Third-party (cathrynlavery/diagram-design), pinned: editorial diagrams as HTML/SVG"
     }
   ]
 }
