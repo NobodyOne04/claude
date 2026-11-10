@@ -33,6 +33,8 @@ def check_push(args, cwd):
         t = t.removeprefix("refs/heads/")
         if t == "HEAD":
             t = current_branch(cwd)
+            if not t:
+                block("pushing from a folder whose branch I can't tell")
         if t in PROTECTED:
             block(f"pushing to {t}")
 
@@ -49,7 +51,7 @@ SHELLS = {"sh", "bash", "zsh", "eval", "xargs"}
 
 def segments(cmd):
     """Yield each simple command as a token list; a line shlex can't parse only matters if it pushes."""
-    for line in cmd.splitlines():
+    for line in cmd.replace("\\\n", " ").splitlines():  # join `\` continuations
         lex = shlex.shlex(line, posix=True, punctuation_chars=True)
         lex.whitespace_split = True
         try:
@@ -85,9 +87,10 @@ def main():
             continue
         if SHELLS & set(seg) and any(re.search(r"\bgit\b.*\bpush\b", t) for t in seg):
             block("a git push inside a nested shell; run it directly")
-        if "git" not in seg:
+        names = [os.path.basename(t) for t in seg]  # /usr/bin/git counts as git
+        if "git" not in names:
             continue
-        i, gcwd = seg.index("git") + 1, cwd
+        i, gcwd = names.index("git") + 1, cwd
         while i < len(seg) and seg[i].startswith("-"):
             if seg[i] in GIT_OPTS_WITH_ARG and i + 1 < len(seg):
                 if seg[i] == "-C":
