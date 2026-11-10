@@ -2,7 +2,7 @@ MARKETPLACE := nobodyone
 PLUGINS     := $(notdir $(wildcard plugins/*))
 OFFICIAL    := rust-analyzer-lsp@claude-plugins-official claude-code-setup@claude-plugins-official
 # third-party plugins as <plugin>=<github owner/repo of its marketplace>
-EXTERNAL    := ponytail=DietrichGebert/ponytail
+EXTERNAL    := ponytail=DietrichGebert/ponytail diagram-design=cathrynlavery/diagram-design rea=morluto/rea
 
 UNAME := $(shell uname -s)
 

@@ -7,7 +7,9 @@ The repo is a plugin marketplace, so every machine installs from it the same way
 
 On a new machine, clone the repo and run `make setup`. It adds this repo as a marketplace,
 installs every plugin (plus `rust-analyzer-lsp` and `claude-code-setup` from the official marketplace and
-[ponytail](https://github.com/DietrichGebert/ponytail) from its own; third-party ones go in `EXTERNAL`),
+[ponytail](https://github.com/DietrichGebert/ponytail),
+[diagram-design](https://github.com/cathrynlavery/diagram-design) and
+[rea](https://github.com/morluto/rea) from their own; third-party ones go in `EXTERNAL`),
 installs the language servers (brew on macOS, pacman on Arch), installs Chromium for Playwright,
 then runs `make doctor`. Running it again only installs what's missing.
 
