@@ -21,3 +21,15 @@ Setup and plugin list: `README.md`.
 - Python scripts carry their own `--test` self-check; run with `python3 -I`, stdlib only.
 - Bump a third-party `sha` only after running `plugin-audit` on the new commit.
 - Leave this repo on `main` when done: the local marketplace installs whatever is checked out.
+
+## Gotchas
+- Run `git push` as a command of its own: the merge guard refuses pushes chained with `&&`.
+- Auto mode refuses some actions even when asked: edits to `~/.claude/settings.json` that widen
+  trust or permissions, and deleting remote branches. Give me the exact command to run with `! …`.
+- Never rewrite `~/.claude/settings.json` whole: merge into it (an overwrite once dropped every
+  enabled plugin and the marketplace entry).
+- After a merge: `/plugin marketplace update nobodyone`, then `/reload-plugins`. An installed plugin
+  only changes when its `version` does.
+- zsh expands a leading `=`: `echo ===` fails with "== not found". Quote it.
+- The dotfiles repos (`zsh`, `nvim`, `tmux`, `ghostty`) are described in the `dotfiles` skill; when
+  a repo's check command or flow changes, update its row there.

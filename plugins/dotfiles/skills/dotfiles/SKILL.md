@@ -22,6 +22,9 @@ Edit the repo, never the symlink target's copy, and never a `.bak-*` file.
 
 Check what is linked: `make status` in `zsh` and `tmux`; `readlink ~/.config/nvim`.
 
+Before working in a repo, read its `CLAUDE.md` if it has one (`zsh`, `nvim`, `claude`): where changes go,
+how to test, and gotchas that already cost time. Keep it current when you learn a new one.
+
 ### Where things go
 
 **zsh**: `zshrc` only sources `conf.d/*.zsh` in order:
@@ -67,11 +70,11 @@ Run the repo's check and show me the result:
 
 | Repo | Command | What it does |
 |---|---|---|
-| `zsh` | `make check` | `zsh -n` on every file, git/direnv/hooks parse, interactive startup prints nothing |
-| `nvim` | `make check` | headless start, fails on errors |
+| `zsh` | `make check` | `make lint` (`zsh -n` on every file, git/direnv/hooks parse; CI runs it) + interactive startup prints nothing |
+| `nvim` | `make check` | headless start, then every plugin loaded and a file per language opened; fails on errors |
 | `tmux` | `make check` | loads the config in a throwaway server |
 | `ghostty` | `ghostty +validate-config` | config parses |
-| `claude` | `make check` | `claude plugin validate` |
+| `claude` | `make check` | `claude plugin validate`, hook and script self-tests (CI runs it) |
 
 To try a zsh change in a fresh shell: `zsh -ic '<command>'`, or tell me to run `reload`.
 
@@ -82,10 +85,12 @@ update the README in the same commit.
 
 ## Commit and sync
 
-- Follow the `commit-style` skill (my name, 🤖 at the end of the subject).
-- Commit to `main`, one repo per commit. Push only when I ask.
-- After a push, remind me to `git pull` on the other machine (and `make sync` for nvim
-  if plugins changed, `make link` if a new linked file was added).
+- Every change goes through the `github-flow` skill, like any other repo: branch, `CHANGELOG.md` line,
+  PR opened in the browser, I merge (squash only). Commits follow `commit-style`. One repo per PR.
+- These repos are the live config (`~/.zshrc`, `~/.config/nvim` point at the checkout): after pushing a
+  branch, switch back to `main` unless I'm trying the change; after I merge, `git switch main && git pull`.
+- After a merge, remind me to `git pull` on the other machine (and `make sync` for nvim if
+  `lazy-lock.json` changed, `make link` if a new linked file was added), and `reload` / restart nvim here.
 
 ## Don't
 
