@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- workflow 0.7.0: `github-flow` keeps a `CLAUDE.md` in every repo and updates it in the PR that changes commands, layout or conventions; `new-project` creates one
 - workflow 0.6.0: `new-project` skill: every new project gets a private GitHub repo under NobodyOne04 from the first commit
 - workflow 0.5.0: session-start warning when a marketplace added from a local folder isn't on `main`
 - workflow 0.4.0: `plugin-audit` skill: lists what installed plugins run and flags unpinned sources, network and credential use

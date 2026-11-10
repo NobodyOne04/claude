@@ -23,6 +23,7 @@ git init -b main
 Add, and nothing more (the project itself comes later, through `github-flow`):
 - `README.md`: `# <name>` and the one-line description.
 - `CHANGELOG.md`: `# Changelog` and an empty `## Unreleased` (see `github-flow`).
+- `CLAUDE.md`: the skeleton from `github-flow`, filled with what's known so far.
 - `.gitignore` for the stack if it's known (`.DS_Store` always), plus `.env*`, so secrets
   never reach the backup.
 

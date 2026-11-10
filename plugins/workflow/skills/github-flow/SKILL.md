@@ -1,6 +1,6 @@
 ---
 name: github-flow
-description: Branches, pull requests, changelog and review rules for my GitHub repos. Use whenever you start a change in a repo with a GitHub remote, before creating a branch, committing, pushing, opening or updating a PR, answering PR review comments, cleaning up after I say a PR is merged, or cutting a release/version.
+description: Branches, pull requests, changelog, CLAUDE.md and review rules for my GitHub repos. Use whenever you start a change in a repo with a GitHub remote, before creating a branch, committing, pushing, opening or updating a PR, answering PR review comments, cleaning up after I say a PR is merged, or cutting a release/version.
 ---
 
 # GitHub flow
@@ -56,6 +56,28 @@ One branch is one topic. Something unrelated comes up: new branch, new PR.
   `plugin.json` of each plugin it touches (same semver rule) and names it in the changelog
   line: `- workflow 0.4.0: plugin-audit skill`.
 
+## CLAUDE.md: keep it true for the next session
+- The repo keeps `CLAUDE.md` at its root: what Claude needs to work in it without
+  rediscovering it. Create it if missing, from what you can read in the repo:
+  ```
+  # <repo>
+
+  <one line: what this is>
+
+  ## Commands
+  <build, test, lint, run: the exact commands>
+
+  ## Layout
+  <the dirs and files that matter, one line each>
+
+  ## Conventions
+  <rules not obvious from the code: style, gotchas, things to never do>
+  ```
+- Every PR that changes a command, the layout, or a convention updates it in the same PR.
+  A PR that changes none of these leaves it alone.
+- Keep it short (under ~100 lines) and factual. No changelog, no history, nothing the code
+  or README already says plainly; link to them instead.
+
 ## Commits on the branch: squash when needed
 - Before opening the PR, look at `git log main..HEAD`. If there are fixups, WIP or
   "oops" commits, squash them into one (or a few that each make sense alone):
@@ -84,6 +106,9 @@ One branch is one topic. Something unrelated comes up: new branch, new PR.
 
   ## Changelog
   <the line you added>
+
+  ## CLAUDE.md
+  <what you updated, or "no change">
   ```
 - Right after creating it, open it in my browser: `gh pr view <n> --web`.
 - Check that CI passes (`gh pr checks <n>`) before telling me it's ready.
