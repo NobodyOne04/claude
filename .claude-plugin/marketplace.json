@@ -1,11 +1,19 @@
 {
   "name": "nobodyone",
-  "owner": { "name": "NobodyOne04" },
+  "description": "NobodyOne04's Claude Code skills, plugins and MCP servers",
+  "owner": {
+    "name": "NobodyOne04"
+  },
   "plugins": [
     {
       "name": "workflow",
       "source": "./plugins/workflow",
       "description": "How I work: commit style and git habits across all my repos"
+    },
+    {
+      "name": "dotfiles",
+      "source": "./plugins/dotfiles",
+      "description": "My dotfiles (zsh, nvim, tmux, Ghostty, Arch desktop): where things live, house style, checks"
     }
   ]
 }

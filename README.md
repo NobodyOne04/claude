@@ -8,6 +8,7 @@ The repo is a plugin marketplace, so every machine installs from it the same way
 ```
 /plugin marketplace add NobodyOne04/claude
 /plugin install workflow@nobodyone
+/plugin install dotfiles@nobodyone
 ```
 
 Update later with `/plugin marketplace update nobodyone`.
@@ -29,6 +30,7 @@ A plugin can hold `skills/`, `agents/`, `commands/`, `hooks/hooks.json` and `.mc
 | Plugin | What's in it |
 |---|---|
 | `workflow` | `commit-style`: commit messages and git habits |
+| `dotfiles` | `dotfiles`: map, house style and checks for my zsh, nvim, tmux, Ghostty and Arch configs |
 
 ## Develop
 
