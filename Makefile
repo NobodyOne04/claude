@@ -1,6 +1,8 @@
 MARKETPLACE := nobodyone
 PLUGINS     := $(notdir $(wildcard plugins/*))
-OFFICIAL    := rust-analyzer-lsp@claude-plugins-official
+OFFICIAL    := rust-analyzer-lsp@claude-plugins-official claude-code-setup@claude-plugins-official
+# third-party plugins as <plugin>=<github owner/repo of its marketplace>
+EXTERNAL    := ponytail=DietrichGebert/ponytail
 
 UNAME := $(shell uname -s)
 
@@ -14,6 +16,7 @@ plugins:
 	claude plugin marketplace add "$(CURDIR)"
 	@for p in $(PLUGINS); do claude plugin install "$$p@$(MARKETPLACE)" || exit 1; done
 	@for p in $(OFFICIAL); do claude plugin install "$$p" || exit 1; done
+	@for e in $(EXTERNAL); do claude plugin install "$${e%%=*}" --marketplace "$${e#*=}" || exit 1; done
 
 ## lsp: install the language servers the dev plugin (and rust-analyzer-lsp) use
 lsp:
