@@ -1,0 +1,23 @@
+# claude
+
+My Claude Code plugin marketplace (`nobodyone`): skills, hooks and MCP servers for every machine.
+Setup and plugin list: `README.md`.
+
+## Commands
+- `make check`: validate the marketplace and every plugin, self-test the hooks and the audit
+  script. CI runs it on every PR; run it before pushing.
+- `make setup`: install everything on a fresh machine.
+
+## Layout
+- `.claude-plugin/marketplace.json`: the plugin list. Third-party plugins are pinned by `sha`.
+- `plugins/<name>/.claude-plugin/plugin.json`: each plugin's manifest and `version`.
+- `plugins/workflow/skills/*/SKILL.md`: my working rules (commits, GitHub flow, new projects, audit).
+- `plugins/workflow/hooks/`: `guard-main.py` blocks merges and pushes to `main`
+  (tests: `test-guard.sh`); `marketplace-branch.py` warns when this repo isn't on `main`.
+
+## Conventions
+- Every PR bumps `version` in the `plugin.json` of each plugin it touches and adds a
+  `CHANGELOG.md` line naming it (`github-flow`).
+- Python scripts carry their own `--test` self-check; run with `python3 -I`, stdlib only.
+- Bump a third-party `sha` only after running `plugin-audit` on the new commit.
+- Leave this repo on `main` when done: the local marketplace installs whatever is checked out.
