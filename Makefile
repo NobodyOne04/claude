@@ -44,3 +44,4 @@ doctor:
 check:
 	claude plugin validate .
 	@for p in plugins/*/; do claude plugin validate "$$p" || exit 1; done
+	sh plugins/workflow/hooks/test-guard.sh
