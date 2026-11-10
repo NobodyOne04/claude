@@ -10,7 +10,8 @@ installs every plugin (plus `rust-analyzer-lsp`, `claude-code-setup`, `security-
 (needs `GITHUB_PERSONAL_ACCESS_TOKEN` set), `feature-dev` and
 [superpowers](https://github.com/obra/superpowers) from the official marketplace, and
 [ponytail](https://github.com/DietrichGebert/ponytail) and
-[diagram-design](https://github.com/cathrynlavery/diagram-design) from their own; third-party ones go in `EXTERNAL`),
+[diagram-design](https://github.com/cathrynlavery/diagram-design), which this marketplace lists pinned to a
+commit so their updates only arrive when I bump the `sha` in `marketplace.json`),
 installs the language servers (brew on macOS, pacman on Arch), installs Chromium for Playwright,
 then runs `make doctor`. Running it again only installs what's missing.
 
@@ -21,7 +22,7 @@ then runs `make doctor`. Running it again only installs what's missing.
 | `make lsp` | language servers missing from `PATH` |
 | `make browser` | Chromium for the Playwright MCP |
 | `make doctor` | which language servers are missing, MCP connection status |
-| `make check` | validate the marketplace and every plugin |
+| `make check` | validate the marketplace and every plugin, self-test the hook and the audit script (CI runs it on every PR) |
 
 Or by hand from inside Claude:
 
@@ -52,7 +53,8 @@ A plugin can hold `skills/`, `agents/`, `commands/`, `hooks/hooks.json` and `.mc
 
 | Plugin | What's in it |
 |---|---|
-| `workflow` | `commit-style`: commit messages. `github-flow`: typed branches (`feature/`, `bug/`, ...), PR per change, `CHANGELOG.md` line per PR, review-comment summaries. Hook: blocks PR merges and pushes to `main`, only I merge |
+| `workflow` | `commit-style`: commit messages. `github-flow`: typed branches (`feature/`, `bug/`, ...), PR per change, `CHANGELOG.md` line per PR, review-comment summaries, cleanup after merge. `plugin-audit`: security check of installed plugins, hooks and MCP servers. Hook: blocks PR merges and pushes to `main`, only I merge |
+| `ponytail`, `diagram-design` | third-party, pinned to a reviewed commit; run `plugin-audit` before bumping the `sha` |
 | `dev` | MCP: Context7 (current library docs), Playwright (browser). LSP: Go, Python, Lua, TS/JS, Bash, YAML |
 | `dotfiles` | `dotfiles`: map, house style and checks for my zsh, nvim, tmux, Ghostty and Arch configs |
 
