@@ -67,7 +67,7 @@ Changes go through a branch and a PR (see `github-flow`); every PR adds a line t
 **Context7** needs a login: in Claude run `/mcp`, pick `plugin:dev:context7`, authenticate in the browser.
 
 **Playwright** runs through `npx` (needs Node). If it reports a missing browser:
-`npx playwright install chromium`.
+`make browser`. Its version is pinned in `plugins/dev/.mcp.json`; bump it on purpose, not via `@latest`.
 
 **Language servers** must be on `PATH`; a missing one only disables that language.
 
