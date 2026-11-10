@@ -6,7 +6,7 @@ The repo is a plugin marketplace, so every machine installs from it the same way
 ## Install
 
 On a new machine, clone the repo and run `make setup`. It adds this repo as a marketplace,
-installs every plugin (plus `rust-analyzer-lsp`, `claude-code-setup` and
+installs every plugin (plus `rust-analyzer-lsp`, `claude-code-setup`, `security-guidance` and
 [superpowers](https://github.com/obra/superpowers) from the official marketplace, and
 [ponytail](https://github.com/DietrichGebert/ponytail) and
 [diagram-design](https://github.com/cathrynlavery/diagram-design) from their own; third-party ones go in `EXTERNAL`),
