@@ -3,29 +3,39 @@
 - Status: Accepted
 - Date: 2026-11-11
 
-> Records an existing decision. Accepted by the owner on 2026-11-11.
+Records an existing decision (accepted by the owner on 2026-11-11): skills, hooks and MCP
+servers for every machine ship as plugins from this repo, installed through Claude Code's
+own marketplace mechanism.
 
-## Context
-The same skills, hooks and MCP servers must work on the Mac and on Arch, and stay in sync.
+## Technical details
+- **Problem**: the same skills, hooks and MCP servers must work on the Mac and on Arch and
+  stay in sync; hand-copied files in `~/.claude` drift per machine and have no history.
+- **Marketplace**: `.claude-plugin/marketplace.json` names the marketplace `nobodyone` and
+  lists every plugin. Own plugins use a relative `source` (`./plugins/workflow`,
+  `./plugins/dotfiles`, `./plugins/dev`, `./plugins/engineering`); third-party ones use a
+  `github` source pinned by `sha` ([0002](0002-pin-third-party-plugins-by-sha.adr)).
+- **Plugin layout**: one plugin per area under `plugins/<name>/`, each with
+  `.claude-plugin/plugin.json` (`name`, `version`, `description`, `author`) and its
+  `skills/*/SKILL.md`, `hooks/hooks.json` or MCP config.
+- **Install**: `make setup` runs `plugins` (`claude plugin marketplace add "$(CURDIR)"`, then
+  `claude plugin install <name>@nobodyone` for every plugin read from `marketplace.json`, plus
+  the listed official plugins), `lsp`, `browser` and `doctor`. Plugin names come from
+  `marketplace.json` itself, so a new plugin needs no Makefile change.
+- **Updates**: an installed plugin only changes when its `plugin.json` `version` changes, so
+  every PR bumps the version of each plugin it touches (semver) and names it in
+  `CHANGELOG.md` (`github-flow`). After a merge: `/plugin marketplace update nobodyone`, then
+  `/reload-plugins`.
+- **Local source**: the marketplace is added from the local clone (`directory` source), so it
+  installs whatever is checked out. The clone stays on `main`; `marketplace-branch.py`
+  (`SessionStart` hook) reads `~/.claude/plugins/known_marketplaces.json` and warns, never
+  blocks, when a `directory` marketplace is on another branch.
+- **Validation**: `make check` runs `claude plugin validate .` and on every `plugins/*/`, plus
+  the hook and audit self-tests; CI runs it on every PR and on every update of `main`.
+- **Consequences**: one command per machine, history and review through PRs. A forgotten
+  version bump means the change never installs; a clone left on a branch installs unmerged
+  work (warned at session start).
 
-## Decision
-The repo is a plugin marketplace (`nobodyone`, `.claude-plugin/marketplace.json`) with one
-plugin per area under `plugins/`. Machines add it from the local clone and install with
-`make setup`. A plugin only updates when its `plugin.json` `version` changes, so every PR bumps
-the version of each plugin it touches. The clone stays on `main`: the local marketplace
-installs whatever is checked out.
-
-## Alternatives
-- Symlink or copy files into `~/.claude`: no versioning, per-machine drift.
-- One big plugin: every change reinstalls everything.
-
-## Rationale
-Uses the native install/update path; per-plugin versions make updates explicit.
-
-## Consequences
-- Positive: one command per machine, history and review through PRs.
-- Negative: forgetting a version bump means the change never installs; a clone left on a
-  branch installs unmerged work (warned by `marketplace-branch.py`).
-
-## References
-`README.md`, `CLAUDE.md`, `Makefile`.
+## Technologies and alternatives
+- Involved: Claude Code plugin marketplace and `claude plugin` CLI, GNU Make, GitHub Actions.
+- Alternatives: symlink or copy files into `~/.claude`: no versioning, per-machine drift;
+  one big plugin: every change reinstalls everything.
