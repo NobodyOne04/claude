@@ -1,12 +1,23 @@
 ---
 name: adr-manager
-description: Create, review, update and supersede Architecture Decision Records (ADRs), never approving one myself. Use when I ask about ADRs, when an architectural decision with long-term consequences is discussed or approved (suggest recording it), when an existing ADR must be updated, deprecated or superseded, or when a project needs an ADR folder.
+description: Create, review, update and supersede Architecture Decision Records (ADRs), never approving one myself. Use before writing code for any feature or major change in a project (the ADR comes first), when I ask about ADRs, when an architectural decision with long-term consequences is discussed or approved (suggest recording it), when an existing ADR must be updated, deprecated or superseded, or when a project needs an ADR folder.
 ---
 
 # ADR manager
 
 ADRs record decisions **I** approved: context, alternatives, rationale, consequences.
 Claude drafts and maintains them; Claude never approves or finalizes one.
+
+## ADR first, then code
+In any project with a codebase:
+- Every feature or major change starts with an ADR. Write no code, scaffolding or config for
+  it until I approve the ADR (`Accepted`) and give the go. Show me the draft and stop.
+- Granular: one decision per ADR. A feature that needs several decisions gets several ADRs.
+- Dependencies set the order: if B depends on A, A gets the lower number and is implemented
+  first.
+- One ADR, one PR: the PR carries the ADR and its implementation, nothing else (`github-flow`).
+- Minor changes (fix, docs, tweak) need no new ADR; they use the latest ADR's minor number
+  (`commit-style`).
 
 ## Rules
 - Read existing ADRs before proposing a decision; avoid duplicates, link related ones.

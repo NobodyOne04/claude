@@ -33,6 +33,10 @@ PR body: `bug/42-login-crash` + `Closes #42`.
 
 One branch is one topic. Something unrelated comes up: new branch, new PR.
 
+A feature or major change: its ADR comes first and I approve it before any code
+(`adr-manager`). Then one branch and one PR per ADR, carrying the ADR and its implementation.
+Several dependent ADRs: lower number first, one PR each.
+
 ## Changelog: every PR adds a line
 - The repo keeps `CHANGELOG.md` at its root ([Keep a Changelog](https://keepachangelog.com)
   format). Create it if missing:
