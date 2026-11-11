@@ -1,6 +1,6 @@
 ---
 name: dotfiles
-description: Map, conventions and checks for my dotfiles repos (zsh, nvim, tmux, Ghostty, Arch desktop "archminimal"). Use whenever a task touches shell aliases or functions, prompt, git/direnv/atuin/lazygit config, Neovim config or plugins, tmux, Ghostty, keybindings, the archminimal theme, or "my config", "my setup", "my dotfiles", on macOS or Arch.
+description: Map, conventions and checks for my dotfiles repos (zsh, nvim, tmux, Ghostty, Arch desktop "archminimal": Hyprland, Quickshell, kitty, login greeter). Use whenever a task touches shell aliases or functions, prompt, git/direnv/atuin/lazygit config, Neovim config or plugins, tmux, Ghostty, Hyprland, the Quickshell bar/launcher/lock screen, kitty, keybindings, the archminimal theme, or "my config", "my setup", "my dotfiles", on macOS or Arch.
 ---
 
 # Dotfiles
@@ -17,12 +17,13 @@ Edit the repo, never the symlink target's copy, and never a `.bak-*` file.
 | `nvim` | `NobodyOne04/nvim` | `~/.config/nvim` | Neovim (lazy.nvim) |
 | `tmux` | `NobodyOne04/tmux` | `~/.config/tmux`, `~/.local/bin/tms` | tmux, `tms` session picker |
 | `~/.config/ghostty` (not linked, the repo itself) | `NobodyOne04/ghostty` | — | Ghostty terminal |
-| Arch desktop | _TODO: repo name_ | _TODO_ | Hyprland, bar, launcher, login screen |
+| `hyprland` | `NobodyOne04/hyprland` | Arch only (`make install`): `~/.config/{hypr,quickshell/archminimal,kitty,fastfetch}` | Arch desktop "archminimal-hypr": Hyprland (Lua config), Quickshell bar / launcher / lock screen / notifications, kitty. Runs in an Arch VM |
+| `sddm-login` | `NobodyOne04/sddm-login` (private) | Arch, system-wide | login greeter; the lock screen in `hyprland` copies its look. Not cloned on the Mac |
 | `claude` | `NobodyOne04/claude` | Claude plugin marketplace | skills, plugins, MCP (this skill lives here) |
 
-Check what is linked: `make status` in `zsh` and `tmux`; `readlink ~/.config/nvim`.
+Check what is linked: `make status` in `zsh`, `tmux` and (on Arch) `hyprland`; `readlink ~/.config/nvim`.
 
-Before working in a repo, read its `CLAUDE.md` if it has one (`zsh`, `nvim`, `claude`): where changes go,
+Before working in a repo, read its `CLAUDE.md` if it has one (`zsh`, `nvim`, `tmux`, `hyprland`, `claude`): where changes go,
 how to test, and gotchas that already cost time. Keep it current when you learn a new one.
 
 ### Where things go
@@ -74,6 +75,7 @@ Run the repo's check and show me the result:
 | `nvim` | `make check` | headless start, then every plugin loaded and a file per language opened; fails on errors |
 | `tmux` | `make check` | loads the config in a throwaway server |
 | `ghostty` | `ghostty +validate-config` | config parses |
+| `hyprland` | `make lint` (Arch; on the Mac read CI) | `Hyprland --verify-config`, shellcheck, JSON, qmllint (informational); CI runs it in an Arch container. Visual / input changes: try on the VM |
 | `claude` | `make check` | `claude plugin validate`, hook and script self-tests (CI runs it) |
 
 To try a zsh change in a fresh shell: `zsh -ic '<command>'`, or tell me to run `reload`.
