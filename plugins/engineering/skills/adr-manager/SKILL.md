@@ -20,18 +20,20 @@ Claude drafts and maintains them; Claude never approves or finalizes one.
   Minor implementation details don't get one.
 
 ## Where
-- Default `docs/adr/NNNN-short-title.md` (`0001-use-postgresql.md`): sequential four-digit
-  numbers, never reused, Markdown.
-- If the project already has an ADR convention (folder, numbering, template), follow it.
+- Default `docs/adr/NNNN-short-title.adr` (`0001-use-postgresql.adr`): sequential four-digit
+  numbers, never reused. Markdown content, but always the `.adr` extension (not `.md`), so
+  ADRs are told apart from other docs; the folder's index stays `README.md`.
+- If the project already has an ADR convention (folder, numbering, template), follow it,
+  except the extension: ADRs found as `.md` get renamed to `.adr` (links included), with my OK.
 - Check the highest existing number before creating a new one.
 
 ## Template
 ```markdown
 # NNNN. <Title>
 
-- Status: Proposed | Accepted | Rejected | Deprecated | Superseded by [NNNN](NNNN-....md)
+- Status: Proposed | Accepted | Rejected | Deprecated | Superseded by [NNNN](NNNN-....adr)
 - Date: YYYY-MM-DD
-- Supersedes: [NNNN](NNNN-....md)   <!-- only if it does -->
+- Supersedes: [NNNN](NNNN-....adr)   <!-- only if it does -->
 
 ## Context
 <problem, requirements, constraints>

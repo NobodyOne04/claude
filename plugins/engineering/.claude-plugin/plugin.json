@@ -1,6 +1,6 @@
 {
   "name": "engineering",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Architecture review, ADRs and on-demand security audits, with my approval on every decision",
   "author": { "name": "NobodyOne04" }
 }

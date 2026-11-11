@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- engineering 0.1.1: `adr-manager` names ADRs `NNNN-short-title.adr` (Markdown inside); ADRs 0001-0004 renamed
+
 ### Added
 - `docs/adr/` with ADRs 0001-0004 recording the repo's existing decisions (all Accepted)
 - workflow 0.8.0: `commit-style` starts every subject (except the initial commit) with an ADR number; minor changes reuse the latest ADR with a minor version, e.g. `[ADR-0010.3]`; `github-flow` tags the merge of a new major ADR (`ADR-0011`)
