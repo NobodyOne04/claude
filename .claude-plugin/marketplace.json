@@ -21,6 +21,11 @@
       "description": "General development: Context7 docs, Playwright browser, language servers for Go, Python, Lua, TS/JS, Bash, YAML"
     },
     {
+      "name": "engineering",
+      "source": "./plugins/engineering",
+      "description": "Architecture review, ADRs and on-demand security audits, with my approval on every decision"
+    },
+    {
       "name": "ponytail",
       "source": {
         "source": "github",

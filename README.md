@@ -31,6 +31,7 @@ Or by hand from inside Claude:
 /plugin install workflow@nobodyone
 /plugin install dotfiles@nobodyone
 /plugin install dev@nobodyone
+/plugin install engineering@nobodyone
 ```
 
 Update later with `/plugin marketplace update nobodyone`.
@@ -59,6 +60,7 @@ A plugin can hold `skills/`, `agents/`, `commands/`, `hooks/hooks.json` and `.mc
 | `workflow` | `commit-style`: commit messages. `github-flow`: typed branches (`feature/`, `bug/`, ...), PR per change, `CHANGELOG.md` line per PR, `CLAUDE.md` kept current, review-comment summaries, cleanup after merge. `plugin-audit`: security check of installed plugins, hooks and MCP servers. `new-project`: every new project starts as a private GitHub repo, so it's backed up from the first commit. Hooks: block PR merges and pushes to `main` (only I merge); warn at session start when a local-folder marketplace isn't on `main` |
 | `ponytail`, `diagram-design` | third-party, pinned to a reviewed commit; run `plugin-audit` before bumping the `sha` |
 | `dev` | MCP: Context7 (current library docs), Playwright (browser). LSP: Go, Python, Lua, TS/JS, Bash, YAML |
+| `engineering` | `architecture-review`: design proposals and audits with trade-offs, I approve. `adr-manager`: ADRs in `docs/adr/`. `security-audit`: on-demand audits, findings kept in `docs/security/SECURITY_REPORT.md` |
 | `dotfiles` | `dotfiles`: map, house style and checks for my zsh, nvim, tmux, Ghostty and Arch configs |
 
 ## Develop
