@@ -12,6 +12,7 @@
 - CI runs `make check` on every PR
 
 ### Changed
+- dotfiles 0.1.4: repos renamed to `archminimal-hypr` (was `hyprland`) and `archminimal-setup` (was `linux_setup`, now in the map)
 - dotfiles 0.1.3: the login screen repo is `archminimal-greeter` (was `sddm-login`), with its check
 - dotfiles 0.1.2: map lists the `hyprland` and `sddm-login` repos (was a TODO) and how to check `hyprland`
 - dotfiles 0.1.1: dotfiles changes go through `github-flow` (branch, PR, I merge) instead of commits to `main`; read each repo's `CLAUDE.md` first
