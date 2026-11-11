@@ -3,35 +3,30 @@
 - Status: Accepted
 - Date: 2026-11-11
 
-> Decided by the owner on 2026-11-11.
+Decided by the owner on 2026-11-11: every feature or major change starts with an approved
+ADR, one decision per ADR, implemented in its own PR.
 
-## Context
-Claude could start writing code for a feature before the decision behind it was recorded
-and approved, and one PR could mix several decisions, which made review and history hard
-to follow.
+## Technical details
+- **Problem**: Claude could start coding a feature before the decision behind it was recorded
+  and approved, and one PR could mix several decisions, which made review and history hard
+  to follow.
+- **ADR first**: in any project with a codebase, every feature or major change starts with an
+  ADR (`adr-manager`). No code, scaffolding or config for it until I approve the ADR
+  (`Accepted`) and give the go; Claude shows the draft and stops.
+- **Granular**: one decision per ADR; a feature needing several decisions gets several ADRs.
+  If B depends on A, A gets the lower number and is implemented first.
+- **One ADR, one PR**: the PR carries the ADR and its implementation, nothing else
+  (`github-flow`). Its squash commit on `main` is tagged `ADR-NNNN`.
+- **Commits**: every subject starts with the ADR it falls under (`commit-style`): a major
+  change uses its new number (`[ADR-0011]`); a minor change (fix, docs, tweak) needs no new
+  ADR and uses the latest number plus a minor version (`[ADR-0010.3]`), found with
+  `git log --format=%s | grep -o '\[ADR-0010\.[0-9]*\]' | head -1`.
+- **Files**: `docs/adr/NNNN-short-title.adr`, index in `docs/adr/README.md`.
+- **Consequences**: every major change has an approved record and history reads in
+  dependency order; the cost is an approval round before coding and more, smaller PRs.
+  Only I bring changes into `main` ([0003](0003-only-the-owner-merges-to-main.adr)).
 
-## Decision
-- In any project with a codebase, every feature or major change starts with an ADR. No
-  code, scaffolding or config for it until I approve the ADR (`Accepted`) and give the go.
-- ADRs are granular: one decision per ADR. A feature that needs several decisions gets
-  several ADRs.
-- If B depends on A, A's ADR gets the lower number and is implemented first.
-- One ADR, one PR: the PR carries the ADR and its implementation, nothing else.
-- Minor changes (fix, docs, tweak) need no new ADR; they use the latest ADR's minor number
-  (`commit-style`).
-
-## Alternatives
-- ADRs only for big decisions, written after the code: the record follows the code instead
-  of steering it.
-- One ADR per feature with many decisions inside: hard to supersede one part.
-
-## Rationale
-Approving the decision before any code is cheaper than reviewing code built on a wrong one.
-Granular, ordered ADRs map one-to-one onto PRs, tags (`ADR-NNNN`) and commit subjects.
-
-## Consequences
-- Positive: every major change has an approved record; history reads in dependency order.
-- Negative: an extra approval round before coding; more, smaller PRs.
-
-## References
-`adr-manager` and `github-flow` skills, [0003](0003-only-the-owner-merges-to-main.adr).
+## Technologies and alternatives
+- Alternatives: ADRs only for big decisions, written after the code: the record follows the
+  code instead of steering it; one ADR per feature with many decisions: hard to supersede
+  one part.

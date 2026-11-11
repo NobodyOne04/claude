@@ -40,32 +40,30 @@ In any project with a codebase:
 
 ## Template
 ```markdown
-# NNNN. <Title>
+# NNNN. <Short title>
 
 - Status: Proposed | Accepted | Rejected | Deprecated | Superseded by [NNNN](NNNN-....adr)
 - Date: YYYY-MM-DD
 - Supersedes: [NNNN](NNNN-....adr)   <!-- only if it does -->
 
-## Context
-<problem, requirements, constraints>
+<Purpose: one or two sentences, what this ADR decides and why it exists.>
 
-## Decision
-<the chosen approach>
+## Technical details
+<Rich and concrete: the problem and constraints, the decision, how it works (files,
+commands, config keys, data flow, edge cases), why this approach, and its consequences
+(positive and negative). Name real paths, commands and values; use bullets or sub-headings
+when it gets long.>
 
-## Alternatives
-<other options considered and why not>
-
-## Rationale
-<why this one>
-
-## Consequences
-<positive and negative>
-
-## References
-<docs, discussions, related ADRs>
+## Technologies and alternatives
+- Involved: <libraries, tools, services and versions it relies on>
+- Alternatives: <option: why not>, one line each
 ```
-Required: title, status, date, context, decision, consequences. Keep it short but enough
-for a future developer to understand why.
+- Title: short. Purpose: brief, no details there.
+- **Technical details** is the body: enough for a future developer to rebuild the decision
+  and its implementation without reading the code first.
+- **Technologies and alternatives**: brief. Drop a line with nothing to say; drop the whole
+  section if both are empty.
+- Related ADRs and references are linked inline where they matter.
 
 ## Statuses
 - **Proposed**: under consideration; says plainly it's not approved.
@@ -87,8 +85,8 @@ without my agreement.
 approval → new ADR `Accepted` with `Supersedes`, old one `Superseded by`, its body untouched.
 
 ## Output
-- **New ADR**: id and title, context, alternatives, proposed decision, rationale and
-  consequences, approval status.
+- **New ADR**: id and title, purpose, technical details, technologies and alternatives,
+  approval status.
 - **Review**: current statuses, inconsistencies, outdated or conflicting decisions,
   recommended actions.
 - **Supersession**: previous decision, reason, new decision, links between them.

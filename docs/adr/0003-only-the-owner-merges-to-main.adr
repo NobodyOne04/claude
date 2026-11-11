@@ -3,26 +3,39 @@
 - Status: Accepted
 - Date: 2026-11-11
 
-> Records an existing decision. Accepted by the owner on 2026-11-11.
+Records an existing decision (accepted by the owner on 2026-11-11): Claude works through
+branches and PRs, and a hook makes merging or pushing to `main` impossible for it.
 
-## Context
-Claude works through branches and PRs in all my repos. A merge or push to `main` by Claude
-would skip my review.
+## Technical details
+- **Problem**: a merge or push to `main` by Claude would skip my review; instructions alone
+  don't stop a model from running the command.
+- **Hook**: the `workflow` plugin registers a `PreToolUse` hook in
+  `plugins/workflow/hooks/hooks.json` with matcher `Bash|mcp__.*merge_pull_request`, running
+  `guard-main.py`. It reads the tool call as JSON on stdin and exits `2` with a reason on
+  stderr to block.
+- **Blocked**:
+  - any MCP tool ending in `merge_pull_request`;
+  - `gh pr merge` (with any flags), REST `/pulls/<n>/merge`, GraphQL `mergePullRequest` /
+    `enablePullRequestAutoMerge`, and direct ref updates of `main` or `master` through the
+    git refs API;
+  - `git push` to `main` or `master`: refspecs are parsed (`+src:dst`, `refs/heads/`
+    prefix), a bare push or `HEAD` resolves the current branch with
+    `git branch --show-current`, `--all` and `--mirror` are refused;
+  - pushes it can't analyse safely: a line `shlex` can't parse, or a push inside a nested
+    shell (`sh`, `bash`, `zsh`, `eval`, `xargs`).
+- **Parsing**: the command is split into simple commands on `;`, `&`, `|`, `(`, `)`; `cd`
+  and `git -C` update the working directory used to resolve the branch; git global options
+  with arguments (`-c`, `--git-dir`, `--work-tree`, ...) are skipped; `/usr/bin/git` counts
+  as `git`. The patterns match the raw command text, so a command that merely quotes them
+  (e.g. writing this file through a heredoc) is blocked too.
+- **Flow**: changes go through a `<type>/<slug>` branch and a PR (`github-flow`); I merge
+  with squash. Tests: `plugins/workflow/hooks/test-guard.sh`, run by `make check`.
+- **Consequences**: nothing reaches `main` without me, in every repo, whatever the remote's
+  settings. Pushes chained with `&&` or wrapped in shells are refused, so `git push` runs as
+  a command of its own.
 
-## Decision
-The `workflow` plugin ships a `PreToolUse` hook (`guard-main.py`) that blocks PR merges and
-pushes to `main`. Changes go through a branch and PR (`github-flow`), and I merge.
-
-## Alternatives
-- Instructions only: a model can still run the command.
-- GitHub branch protection alone: doesn't cover local repos or repos without it set up.
-
-## Rationale
-A hard local block works in every repo, regardless of remote settings.
-
-## Consequences
-- Positive: nothing reaches `main` without me.
-- Negative: chained commands with `git push` are refused; push runs on its own.
-
-## References
-`plugins/workflow/hooks/guard-main.py`, `test-guard.sh`, `github-flow` skill.
+## Technologies and alternatives
+- Involved: Claude Code `PreToolUse` hooks, Python 3 stdlib (`shlex`, `re`, `subprocess`),
+  git, GitHub CLI.
+- Alternatives: instructions only: the model can still run the command; GitHub branch
+  protection alone: doesn't cover local repos or repos without it.

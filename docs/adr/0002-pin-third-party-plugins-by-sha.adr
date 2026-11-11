@@ -3,25 +3,29 @@
 - Status: Accepted
 - Date: 2026-11-11
 
-> Records an existing decision. Accepted by the owner on 2026-11-11.
+Records an existing decision (accepted by the owner on 2026-11-11): third-party plugins only
+change when I deliberately move their pinned commit after an audit.
 
-## Context
-Plugins run code and hooks with my permissions. A third-party repo can change at any time.
+## Technical details
+- **Problem**: plugins run code and hooks with my permissions on every machine; a
+  third-party repo can change at any time, and tracking its default branch would install
+  those changes unreviewed.
+- **Pinning**: each third-party entry in `.claude-plugin/marketplace.json` has a `github`
+  source with `repo` and a full 40-character `sha`: `ponytail` (`DietrichGebert/ponytail`)
+  and `diagram-design` (`cathrynlavery/diagram-design`). Their `description` starts with
+  "Third-party (...), pinned" so the list shows it.
+- **Bumping**: a new `sha` lands only after `plugin-audit` on that commit. The audit
+  (`plugins/workflow/skills/plugin-audit/audit.py`, read-only) lists what each plugin runs:
+  hook commands, MCP servers, scripts; flags `npx`/`uvx`/`bunx`/`pnpx`/`pipx` packages with
+  no version or `@latest`/`@next`, network calls (`fetch(`, `urlopen`, `curl`, `wget`,
+  sockets) and credential access (`~/.ssh`, `~/.aws`, `.netrc`, keychain, `*_TOKEN`,
+  `*_SECRET`, `API_KEY`).
+- **Same rule in CI**: GitHub Actions in `.github/workflows/check.yml` are pinned to commit
+  SHAs (version in a comment), and the Claude Code CLI to an exact npm version.
+- **Consequences**: no silent supply-chain changes; upstream fixes wait for a manual,
+  audited bump.
 
-## Decision
-Third-party plugins listed in this marketplace (`ponytail`, `diagram-design`) are pinned by
-`sha`. A bump happens only after `plugin-audit` on the new commit.
-
-## Alternatives
-- Track the default branch: upstream changes arrive unreviewed.
-- Vendor a copy: manual syncing, loses upstream history.
-
-## Rationale
-Updates become deliberate and reviewed, with no copy to maintain.
-
-## Consequences
-- Positive: no silent supply-chain changes.
-- Negative: upstream fixes wait for a manual bump.
-
-## References
-`.claude-plugin/marketplace.json`, `plugins/workflow/skills/plugin-audit/`.
+## Technologies and alternatives
+- Involved: Claude Code marketplace `github` source with `sha`, `plugin-audit` skill.
+- Alternatives: track the default branch: changes arrive unreviewed; vendor a copy: manual
+  syncing, loses upstream history.

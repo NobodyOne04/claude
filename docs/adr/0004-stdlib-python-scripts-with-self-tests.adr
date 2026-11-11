@@ -3,26 +3,29 @@
 - Status: Accepted
 - Date: 2026-11-11
 
-> Records an existing decision. Accepted by the owner on 2026-11-11.
+Records an existing decision (accepted by the owner on 2026-11-11): hooks and audit scripts
+are single-file, dependency-free Python that test themselves.
 
-## Context
-Hooks and audit scripts run on every machine, often on every tool call, with no install step.
+## Technical details
+- **Problem**: hooks run on every machine, some on every tool call, with no install step;
+  any dependency would need a per-machine environment and widen the supply chain.
+- **Rules**:
+  - Python 3, standard library only; one file per script.
+  - Run with `python3 -I` (isolated mode: ignores `PYTHON*` variables and the user
+    site-packages and doesn't put the script's folder on `sys.path`, so a planted module
+    such as `json.py` can't load).
+  - Each script carries a self-check behind `--test` (plain `assert`s, temp dirs via
+    `tempfile`), e.g. `marketplace-branch.py --test` builds a throwaway git repo and checks
+    the warning on `main` vs a feature branch.
+- **Current scripts**: `plugins/workflow/hooks/guard-main.py` (tested from
+  `test-guard.sh`), `plugins/workflow/hooks/marketplace-branch.py`,
+  `plugins/workflow/skills/plugin-audit/audit.py`.
+- **CI**: `make check` runs every self-test; `.github/workflows/check.yml` runs it on each PR
+  and each update of `main` on `ubuntu-latest`.
+- **Consequences**: zero dependencies, tested in CI. No third-party libraries; tests live
+  inside the scripts.
 
-## Decision
-Scripts are Python 3, standard library only, run with `python3 -I`. Each carries its own
-`--test` self-check, and `make check` (CI on every PR) runs them.
-
-## Alternatives
-- Third-party packages: need a venv per machine, widen the supply chain.
-- Shell scripts: harder to parse JSON hook input and test.
-
-## Rationale
-Python is on both machines; `-I` stops planted modules from loading; self-tests keep each
-script one file.
-
-## Consequences
-- Positive: zero dependencies, tested in CI.
-- Negative: no libraries; tests live inside the scripts.
-
-## References
-`plugins/workflow/hooks/*.py`, `plugins/workflow/skills/plugin-audit/audit.py`, `Makefile`.
+## Technologies and alternatives
+- Involved: Python 3 standard library, GNU Make, GitHub Actions.
+- Alternatives: third-party packages: a venv per machine, wider supply chain; shell
+  scripts: hard to parse JSON hook input and to test.
