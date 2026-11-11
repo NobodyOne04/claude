@@ -1,9 +1,9 @@
 # 0003. Only the owner merges to main, enforced by a hook
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-11
 
-> Records an existing decision; not yet approved by the owner.
+> Records an existing decision. Accepted by the owner on 2026-11-11.
 
 ## Context
 Claude works through branches and PRs in all my repos. A merge or push to `main` by Claude

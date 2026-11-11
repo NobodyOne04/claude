@@ -1,9 +1,9 @@
 # 0004. Plugin scripts are stdlib Python with a built-in self-test
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-11
 
-> Records an existing decision; not yet approved by the owner.
+> Records an existing decision. Accepted by the owner on 2026-11-11.
 
 ## Context
 Hooks and audit scripts run on every machine, often on every tool call, with no install step.

@@ -1,9 +1,9 @@
 # 0001. The setup repo is a Claude Code plugin marketplace
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-11
 
-> Records an existing decision; not yet approved by the owner.
+> Records an existing decision. Accepted by the owner on 2026-11-11.
 
 ## Context
 The same skills, hooks and MCP servers must work on the Mac and on Arch, and stay in sync.

@@ -1,9 +1,9 @@
 # 0002. Pin third-party plugins by commit, audit before bumping
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-11
 
-> Records an existing decision; not yet approved by the owner.
+> Records an existing decision. Accepted by the owner on 2026-11-11.
 
 ## Context
 Plugins run code and hooks with my permissions. A third-party repo can change at any time.
