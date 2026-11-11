@@ -4,7 +4,7 @@
 
 ### Added
 - `docs/adr/` with ADRs 0001-0004 recording the repo's existing decisions (all Accepted)
-- workflow 0.8.0: `commit-style` starts every subject (except the initial commit) with an ADR number; minor changes reuse the latest ADR with a minor version, e.g. `[ADR-0010.3]`
+- workflow 0.8.0: `commit-style` starts every subject (except the initial commit) with an ADR number; minor changes reuse the latest ADR with a minor version, e.g. `[ADR-0010.3]`; `github-flow` tags the merge of a new major ADR (`ADR-0011`)
 - engineering 0.1.0: `architecture-review`, `adr-manager` and `security-audit` skills; I approve every decision, audits run only when I ask
 - workflow 0.7.0: `github-flow` keeps a `CLAUDE.md` in every repo and updates it in the PR that changes commands, layout or conventions; `new-project` creates one
 - workflow 0.6.0: `new-project` skill: every new project gets a private GitHub repo under NobodyOne04 from the first commit
@@ -23,7 +23,6 @@
 ## [0.1.0] - 2026-11-11
 
 ### Added
-- workflow 0.8.0: `commit-style` starts every subject (except the initial commit) with an ADR number; minor changes reuse the latest ADR with a minor version, e.g. `[ADR-0010.3]`
 - workflow: `github-flow` skill: typed branches, a PR per change, a changelog line per PR, review-comment summaries
 - workflow: hook that blocks PR merges and pushes to `main`, so only I merge
 - workflow: `github-flow` opens each new PR in the browser for review
