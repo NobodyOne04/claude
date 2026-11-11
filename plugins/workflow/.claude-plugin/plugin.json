@@ -1,6 +1,6 @@
 {
   "name": "workflow",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "How I work: commit style, branch/PR/changelog flow, and a guard so only I merge to main",
   "author": { "name": "NobodyOne04" }
 }

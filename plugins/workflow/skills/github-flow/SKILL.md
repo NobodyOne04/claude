@@ -131,3 +131,7 @@ When I say it's merged ("done", "merged"):
 3. In a repo of Claude plugins, remind me to run `/plugin marketplace update <marketplace>`
    and `/reload-plugins`. Never leave such a repo on a feature branch: a marketplace added
    from a local folder installs whatever is checked out.
+4. If the PR implemented a new major ADR (subject tagged `[ADR-NNNN]`, no minor version, see
+   `commit-style`), tag the merge commit on `main` with that number and push the tag on its own:
+   `git tag -a ADR-0011 -m "ADR 0011: <title>"`, then `git push origin ADR-0011`.
+   Minor `[ADR-NNNN.N]` changes get no tag.
