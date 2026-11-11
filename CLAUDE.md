@@ -20,6 +20,8 @@ Setup and plugin list: `README.md`.
 ## Conventions
 - Every PR bumps `version` in the `plugin.json` of each plugin it touches and adds a
   `CHANGELOG.md` line naming it (`github-flow`).
+- A major change starts with an ADR I approve before any code; one decision per ADR, one ADR
+  per PR, prerequisites numbered first (ADR 0005).
 - Python scripts carry their own `--test` self-check; run with `python3 -I`, stdlib only.
 - Bump a third-party `sha` only after running `plugin-audit` on the new commit.
 - Leave this repo on `main` when done: the local marketplace installs whatever is checked out.
