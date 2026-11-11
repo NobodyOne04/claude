@@ -13,6 +13,7 @@ Setup and plugin list: `README.md`.
 - `plugins/<name>/.claude-plugin/plugin.json`: each plugin's manifest and `version`.
 - `plugins/workflow/skills/*/SKILL.md`: my working rules (commits, GitHub flow, new projects, audit).
 - `plugins/engineering/skills/*/SKILL.md`: architecture review, ADRs, security audits.
+- `docs/adr/`: decision records for this repo (`adr-manager`).
 - `plugins/workflow/hooks/`: `guard-main.py` blocks merges and pushes to `main`
   (tests: `test-guard.sh`); `marketplace-branch.py` warns when this repo isn't on `main`.
 
