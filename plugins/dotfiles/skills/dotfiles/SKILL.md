@@ -18,12 +18,12 @@ Edit the repo, never the symlink target's copy, and never a `.bak-*` file.
 | `tmux` | `NobodyOne04/tmux` | `~/.config/tmux`, `~/.local/bin/tms` | tmux, `tms` session picker |
 | `~/.config/ghostty` (not linked, the repo itself) | `NobodyOne04/ghostty` | — | Ghostty terminal |
 | `hyprland` | `NobodyOne04/hyprland` | Arch only (`make install`): `~/.config/{hypr,quickshell/archminimal,kitty,fastfetch}` | Arch desktop "archminimal-hypr": Hyprland (Lua config), Quickshell bar / launcher / lock screen / notifications, kitty. Runs in an Arch VM |
-| `sddm-login` | `NobodyOne04/sddm-login` (private) | Arch, system-wide | login greeter; the lock screen in `hyprland` copies its look. Not cloned on the Mac |
+| `archminimal-greeter` | `NobodyOne04/archminimal-greeter` (private) | Arch, system-wide (`sudo make install`) | login screen: greetd + Quickshell greeter (was `sddm-login`); the lock screen in `hyprland` copies its look |
 | `claude` | `NobodyOne04/claude` | Claude plugin marketplace | skills, plugins, MCP (this skill lives here) |
 
 Check what is linked: `make status` in `zsh`, `tmux` and (on Arch) `hyprland`; `readlink ~/.config/nvim`.
 
-Before working in a repo, read its `CLAUDE.md` if it has one (`zsh`, `nvim`, `tmux`, `hyprland`, `claude`): where changes go,
+Before working in a repo, read its `CLAUDE.md` if it has one (`zsh`, `nvim`, `tmux`, `hyprland`, `archminimal-greeter`, `linux_setup`, `claude`): where changes go,
 how to test, and gotchas that already cost time. Keep it current when you learn a new one.
 
 ### Where things go
@@ -76,6 +76,7 @@ Run the repo's check and show me the result:
 | `tmux` | `make check` | loads the config in a throwaway server |
 | `ghostty` | `ghostty +validate-config` | config parses |
 | `hyprland` | `make lint` (Arch; on the Mac read CI) | `Hyprland --verify-config`, shellcheck, JSON, qmllint (informational); CI runs it in an Arch container. Visual / input changes: try on the VM |
+| `archminimal-greeter` | `make lint` (Arch; on the Mac read CI) | `Hyprland --verify-config` on the greeter's config, shellcheck, JSON, qmllint; login-flow changes need a real login on the VM |
 | `claude` | `make check` | `claude plugin validate`, hook and script self-tests (CI runs it) |
 
 To try a zsh change in a fresh shell: `zsh -ic '<command>'`, or tell me to run `reload`.
