@@ -15,6 +15,18 @@ description: Write git commit messages in my style. Use whenever you are about t
   `Go debugging, reload on outside edits, fix treesitter lock`.
 - Never vague subjects like `Phase#1`, `update`, `wip`, `fixes`.
 
+## ADR number: every commit except the initial one
+- Start the subject with the ADR it falls under: `[ADR-0009] Runtime keys: encrypt at rest 🤖`.
+- **Major change** (needs a decision record): write the new ADR with `adr-manager` and use
+  its number: `[ADR-0011]`.
+- **Minor change** (fix, docs, tweak): no new ADR file. Use the latest ADR number in the repo
+  (highest in `docs/adr/`) plus a minor version, one higher than the last commit that used it:
+  `git log --format=%s | grep -o '\[ADR-0010\.[0-9]*\]' | head -1` → `[ADR-0010.2]` becomes
+  `[ADR-0010.3]`; none yet → `[ADR-0010.1]`.
+- Repo without ADRs yet: `[ADR-0000.N]`, same minor counting.
+- The initial commit has no ADR number.
+- Count the tag in the ~72-character limit.
+
 ## Body
 - Skip it for trivial changes where the subject says everything.
 - Otherwise explain **why**, and what was wrong before, with concrete facts:
