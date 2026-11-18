@@ -26,7 +26,13 @@ ifeq ($(UNAME),Darwin)
 else
 	sudo pacman -S --needed gopls pyright lua-language-server typescript-language-server bash-language-server yaml-language-server
 endif
-	@command -v rust-analyzer >/dev/null || rustup component add rust-analyzer
+# Arch's rustup package ships no toolchain (component add fails until a default is set)
+# and keeps the rust-analyzer proxy in /usr/lib/rustup/bin, off PATH: link it into ~/.local/bin
+	@command -v rust-analyzer >/dev/null || { \
+		{ rustup show active-toolchain >/dev/null 2>&1 || rustup default stable; } && \
+		rustup component add rust-analyzer && \
+		{ [ ! -x /usr/lib/rustup/bin/rust-analyzer ] || \
+			ln -sf /usr/lib/rustup/bin/rust-analyzer "$(HOME)/.local/bin/rust-analyzer"; }; }
 
 ## browser: Chromium for the Playwright MCP server
 browser:
