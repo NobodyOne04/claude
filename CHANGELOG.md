@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixed
+- `make setup` on Arch: set the stable Rust toolchain as default before adding rust-analyzer (the `rustup` package ships none), and link its rust-analyzer into `~/.local/bin`
+
 ### Changed
 - engineering 0.2.1: ADR template is a short title and purpose, then `Technical details` (rich) and `Technologies and alternatives` (brief, skipped when empty); ADRs 0001-0005 rewritten in it
 - engineering 0.1.1: `adr-manager` names ADRs `NNNN-short-title.adr` (Markdown inside); ADRs 0001-0004 renamed
