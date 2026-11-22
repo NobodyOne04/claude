@@ -33,6 +33,9 @@ PR body: `bug/42-login-crash` + `Closes #42`.
 
 One branch is one topic. Something unrelated comes up: new branch, new PR.
 
+A `bug/` or `hotfix/` branch: before fixing, get Codex's own root-cause analysis (`codex`
+skill) and note in the PR body where you and Codex agreed or differed.
+
 A feature or major change: its ADR comes first and I approve it before any code
 (`adr-manager`). Then one branch and one PR per ADR, carrying the ADR and its implementation.
 Several dependent ADRs: lower number first, one PR each.
@@ -93,6 +96,12 @@ Several dependent ADRs: lower number first, one PR each.
   like a commit subject (`commit-style`, ending in ` 🤖`).
 
 ## Opening the PR
+- Every PR, every time, **before the first push**: run the Codex review (`codex` skill) on
+  the branch, verify each finding, commit the fixes, review again until a review needs no
+  more code changes, and keep the results for
+  `## Codex review` ("nothing found", or "skipped (<reason>)" only if Codex is unavailable).
+  CI then checks the reviewed code. Commits added later get reviewed again before you push,
+  and each re-review's results are added to `## Codex review` (earlier entries stay).
 - Push with `git push -u origin <branch>`, then `gh pr create --base main`. Run every
   `git push` as a command of its own, not chained with `&&`: the merge guard refuses pushes it
   can't parse.
@@ -113,7 +122,12 @@ Several dependent ADRs: lower number first, one PR each.
 
   ## CLAUDE.md
   <what you updated, or "no change">
+
+  ## Codex review
+  - fixed: <finding> (<sha>)
+  - dismissed: <finding>: <why>
   ```
+  With a repo template, append `## Codex review` to it if it has none: every PR carries it.
 - Right after creating it, open it in my browser: `gh pr view <n> --web`.
 - Check that CI passes (`gh pr checks <n>`) before telling me it's ready.
 
@@ -124,7 +138,8 @@ When I (or anyone) leave comments on the PR and ask you to address them:
 2. Fix on the same branch, new commits (squash before I merge only if I ask).
 3. Reply to each inline comment with what you did, or why you didn't.
 4. Post **one summary comment** on the PR: one line per comment, `fixed in <sha>`,
-   `won't fix: <why>` or `question for you: <...>`. Update the PR body if the change grew.
+   `won't fix: <why>` or `question for you: <...>`. Update the PR body if the change grew,
+   and always add each re-review's results to `## Codex review` (keep the earlier entries).
 5. Give me the link again. Don't resolve threads opened by others; I resolve them.
 
 ## After I merge

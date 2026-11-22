@@ -23,6 +23,8 @@ Setup and plugin list: `README.md`.
   `CHANGELOG.md` line naming it (`github-flow`).
 - A major change starts with an ADR I approve before any code; one decision per ADR, one ADR
   per PR, prerequisites numbered first (ADR 0005).
+- Codex reviews every PR and checks every bug's root cause (results in the PR body), and
+  critiques every ADR draft (results in the message to me) (`codex` skill, ADR 0007).
 - Python scripts carry their own `--test` self-check; run with `python3 -I`, stdlib only.
 - Bump a third-party `sha` only after running `plugin-audit` on the new commit.
 - Leave this repo on `main` when done: the local marketplace installs whatever is checked out.

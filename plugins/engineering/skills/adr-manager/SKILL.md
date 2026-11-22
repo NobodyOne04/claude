@@ -74,15 +74,16 @@ when it gets long.>
 
 ## Workflows
 **Create**: confirm it's architecturally significant → read related ADRs → draft from the
-template → show me → on explicit approval set `Accepted` and save. If I want the draft kept
+template → Codex critiques the draft, every time (`codex` skill): take the points you agree
+with, list the rest with why → show me → on explicit approval set `Accepted` and save. If I want the draft kept
 before deciding, save it as `Proposed`.
 
 **Review**: check ADRs against the current code; report outdated, conflicting or
 differently-implemented decisions and ones worth reconsidering; recommend actions. No edits
 without my agreement.
 
-**Supersede**: name the ADR being replaced and why → draft the new one → my explicit
-approval → new ADR `Accepted` with `Supersedes`, old one `Superseded by`, its body untouched.
+**Supersede**: name the ADR being replaced and why → draft the new one → Codex critiques it,
+as in Create → my explicit approval → new ADR `Accepted` with `Supersedes`, old one `Superseded by`, its body untouched.
 
 ## Output
 - **New ADR**: id and title, purpose, technical details, technologies and alternatives,
