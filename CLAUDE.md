@@ -11,7 +11,8 @@ Setup and plugin list: `README.md`.
 ## Layout
 - `.claude-plugin/marketplace.json`: the plugin list. Third-party plugins are pinned by `sha`.
 - `plugins/<name>/.claude-plugin/plugin.json`: each plugin's manifest and `version`.
-- `plugins/workflow/skills/*/SKILL.md`: my working rules (commits, GitHub flow, new projects, audit).
+- `plugins/workflow/skills/*/SKILL.md`: my working rules (commits, GitHub flow, new projects, audit,
+  `codex`: the read-only second agent).
 - `plugins/engineering/skills/*/SKILL.md`: architecture review, ADRs, security audits.
 - `docs/adr/`: decision records for this repo (`adr-manager`).
 - `plugins/workflow/hooks/`: `guard-main.py` blocks merges and pushes to `main`

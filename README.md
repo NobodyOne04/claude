@@ -47,6 +47,7 @@ plugins/
     skills/github-flow/SKILL.md
     skills/plugin-audit/          # SKILL.md + audit.py
     skills/new-project/SKILL.md
+    skills/codex/SKILL.md
     hooks/hooks.json              # guard-main.py: no merges/pushes to main
                                   # marketplace-branch.py: warn if this repo isn't on main
 ```
@@ -57,7 +58,7 @@ A plugin can hold `skills/`, `agents/`, `commands/`, `hooks/hooks.json` and `.mc
 
 | Plugin | What's in it |
 |---|---|
-| `workflow` | `commit-style`: commit messages. `github-flow`: typed branches (`feature/`, `bug/`, ...), PR per change, `CHANGELOG.md` line per PR, `CLAUDE.md` kept current, review-comment summaries, cleanup after merge. `plugin-audit`: security check of installed plugins, hooks and MCP servers. `new-project`: every new project starts as a private GitHub repo, so it's backed up from the first commit. Hooks: block PR merges and pushes to `main` (only I merge); warn at session start when a local-folder marketplace isn't on `main` |
+| `workflow` | `commit-style`: commit messages. `github-flow`: typed branches (`feature/`, `bug/`, ...), PR per change, `CHANGELOG.md` line per PR, `CLAUDE.md` kept current, review-comment summaries, cleanup after merge. `plugin-audit`: security check of installed plugins, hooks and MCP servers. `new-project`: every new project starts as a private GitHub repo, so it's backed up from the first commit. `codex`: OpenAI Codex as a read-only second agent (reviews, audits, docs), called through its CLI. Hooks: block PR merges and pushes to `main` (only I merge); warn at session start when a local-folder marketplace isn't on `main` |
 | `ponytail`, `diagram-design` | third-party, pinned to a reviewed commit; run `plugin-audit` before bumping the `sha` |
 | `dev` | MCP: Context7 (current library docs), Playwright (browser). LSP: Go, Python, Lua, TS/JS, Bash, YAML |
 | `engineering` | `architecture-review`: design proposals and audits with trade-offs, I approve. `adr-manager`: ADRs in `docs/adr/`. `security-audit`: on-demand audits, findings kept in `docs/security/SECURITY_REPORT.md` |

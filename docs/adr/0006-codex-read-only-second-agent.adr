@@ -1,0 +1,49 @@
+# 0006. Codex is a read-only second agent, called through its CLI
+
+- Status: Accepted
+- Date: 2026-11-22
+
+Decided by the owner on 2026-11-22: add OpenAI Codex as a second agent that reviews, audits
+and writes docs, called only by Claude, with every exchange visible to me in Claude's session.
+
+## Technical details
+- **Problem**: one model reviews its own code, so its blind spots stay in. A second model
+  catches different bugs, but two agents editing the same code would overwrite each other.
+- **Roles**:
+  - Me: design decisions and ADR approvals.
+  - Claude: the only agent that writes code.
+  - Codex: reviews, audits and writes docs. Never edits code; its findings go to Claude,
+    who verifies and fixes them.
+- **How Claude talks to Codex**: through Bash, no MCP server. Codex CLI 0.171 has no
+  `mcp-server` subcommand (checked 2026-11-22).
+  - Start a thread: `codex exec -s read-only --json "<prompt>"`; keep the `thread_id`
+    from the first event.
+  - Continue it with its context: `codex exec resume <thread_id> -c sandbox_mode="read-only"
+    "<prompt>"`. `resume` has no `-s` flag, so the sandbox is set through `-c`.
+  - Review a branch: `codex review --base main` (read-only).
+  - Write docs: `codex exec -s workspace-write --worktree "<prompt>"`: Codex works in its own
+    managed git worktree. Claude checks the diff touches only docs (`*.md`, `docs/`, ADR
+    files excluded: those stay with Claude and me), then commits and opens the PR. Any other
+    file in the diff: rejected.
+  - Verified 2026-11-22: the read-only sandbox refused a file write ("Operation not
+    permitted"); `resume` recalled a word from the earlier call.
+- **Visibility**: each call and its full output show in Claude's session (`ctrl+o` expands).
+  Claude quotes Codex's replies in full, not as a summary. I can also talk to Codex myself
+  with `codex` in another pane; that's a separate thread.
+- **Unavailable Codex** (`codex` missing or `codex login status` not logged in): Claude says
+  so and carries on without it. Codex never blocks a PR.
+- **Files**: new skill `plugins/workflow/skills/codex/SKILL.md` (roles, commands, rules);
+  workflow 0.9.0 → 0.10.0; CHANGELOG line; CLAUDE.md layout line. This repo holds only
+  Claude's side: I install and configure Codex myself, outside it.
+- **Consequences**: no new code, server or dependency in this repo. Read-only is enforced
+  by the sandbox for review and audit calls; for docs it rests on Claude's diff check. Every
+  call spends my OpenAI quota. Codex never starts a conversation: it only answers Claude.
+
+## Technologies and alternatives
+- Involved: `@openai/codex` CLI 0.171 (npm, global), ChatGPT login.
+- Alternatives:
+  - Own stdlib-Python MCP wrapper around `codex exec` (ADR 0004 style): ~150 lines to
+    maintain for what Bash already does.
+  - Third-party Codex MCP server: another supply chain to pin and audit (ADR 0002).
+  - `claude mcp serve` inside Codex: hands Codex Claude's edit and shell tools, breaking
+    "only Claude writes code".

@@ -9,3 +9,4 @@ Format and lifecycle: `docs/adr/NNNN-short-title.adr`, statuses Proposed, Accept
 | [0003](0003-only-the-owner-merges-to-main.adr) | Only the owner merges to main, enforced by a hook | Accepted |
 | [0004](0004-stdlib-python-scripts-with-self-tests.adr) | Plugin scripts are stdlib Python with a built-in self-test | Accepted |
 | [0005](0005-adr-before-code-one-adr-per-pr.adr) | ADR before code, granular ADRs, one ADR per PR | Accepted |
+| [0006](0006-codex-read-only-second-agent.adr) | Codex is a read-only second agent, called through its CLI | Accepted |
