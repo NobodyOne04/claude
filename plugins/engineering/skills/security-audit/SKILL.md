@@ -68,10 +68,17 @@ a line. A suggestion is not authorization: wait for my yes. Don't nag.
    `pip-audit`, `govulncheck`, `cargo audit`), secret scanning (`gitleaks`), container/IaC
    scanning (`trivy`), language analyzers, and manual code reading. Check a tool exists before
    relying on it; record the ones that couldn't run. Don't install tools without asking.
+   Every audit also gets Codex's independent read-only audit of the same scope (`codex`
+   skill); its findings go through step 5 like any other. Put the Hard limits above and the
+   techniques I authorized in its prompt. Keep secret files (`.env*`, keys, credential
+   stores, data dumps) and raw scanner output out of its scope, and tell it to name the
+   location of a secret, never print the value: whatever it reads lands in its own logs
+   and goes to OpenAI.
 5. **Validate** every finding: read the code or config, exploitable vs theoretical,
    prerequisites, false positives, duplicates of existing findings; record confidence and
    evidence. Scanner output alone is not a confirmed vulnerability.
-6. **Report**: classify each finding as new, recurring, resolved, reopened or unchanged;
+6. **Report**: mark confirmed Codex findings `found by: Codex`, list its dismissed ones with
+   the reason; classify each finding as new, recurring, resolved, reopened or unchanged;
    update the Security Report; present prioritized findings to me.
 
 References: OWASP Top 10 and ASVS, CWE, CVE/CVSS, NIST, OSV and vendor advisories,

@@ -10,6 +10,7 @@
 - engineering 0.1.1: `adr-manager` names ADRs `NNNN-short-title.adr` (Markdown inside); ADRs 0001-0004 renamed
 
 ### Added
+- workflow 0.11.0, engineering 0.3.0: Codex runs every time at fixed points: review of every PR, critique of every ADR draft, root cause before every bug fix, second auditor in every security audit (ADR 0007)
 - workflow 0.10.0: `codex` skill: Codex is a read-only second agent Claude calls through its CLI (ADR 0006)
 - engineering 0.2.0, workflow 0.9.0: ADR first: no code for a feature until its ADR is approved; one decision per ADR, prerequisites numbered first, one ADR per PR (ADR 0005)
 - `docs/adr/` with ADRs 0001-0004 recording the repo's existing decisions (all Accepted)

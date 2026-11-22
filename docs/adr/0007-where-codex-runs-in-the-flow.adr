@@ -1,0 +1,47 @@
+# 0007. Where Codex runs in the flow
+
+- Status: Accepted
+- Date: 2026-11-22
+
+Decided by the owner on 2026-11-22: fixed points where Claude always calls Codex
+([0006](0006-codex-read-only-second-agent.adr)). No step is left to Claude's judgement:
+at each one Codex runs every time, or Claude records why it was skipped.
+
+## Technical details
+- **Problem**: a reviewer called "when it seems useful" gets forgotten, so most work goes
+  unchecked. Each trigger below is a rule, not a choice.
+- **Skips**: only when Codex is unavailable (not installed, not logged in, the call fails).
+  Claude then writes `Codex: skipped (<reason>)` where the result would have gone.
+- **`github-flow`, every PR**: before pushing the branch, Claude runs the Codex review with
+  the read-only command from the `codex` skill
+  (`codex review --base origin/main -c sandbox_mode="read-only"` after `git fetch origin main`:
+  `review` has no `-s`), verifies
+  each finding, commits the fixes, so CI checks the reviewed code, and adds to the PR body:
+  ```
+  ## Codex review
+  - fixed: <finding> (<sha>)
+  - dismissed: <finding>: <why>
+  ```
+  No findings: "Codex review: nothing found". Codex unavailable: "Codex review: skipped
+  (<reason>)".
+- **`security-audit`, every audit** (audits still start only when I ask): Codex audits the
+  same repo read-only and independently. Claude verifies each of its findings and merges the
+  confirmed ones into the one Security Report, marked `found by: Codex`; unconfirmed ones
+  are listed as dismissed with the reason.
+- **`adr-manager`, every ADR draft**: Codex critiques the draft before I see it (weak
+  trade-offs, missing alternatives, gaps in the details). Claude adds the points it accepts
+  and lists the rest, with reasons, in its message to me. Codex never approves anything.
+- **Every bug fix** (`bug/` and `hotfix/` branches): before fixing, Claude asks Codex for its
+  own root-cause analysis of the bug, compares it with its own, and says in the PR body
+  where they agreed or differed. Codex doesn't fix anything.
+- **Files**: one line in each of `github-flow`, `security-audit` and `adr-manager` pointing
+  to the `codex` skill; workflow and engineering version bumps; CHANGELOG line.
+- **Consequences**: every PR, ADR, audit and bug fix has a second-model check on record.
+  Each one adds a few minutes and some quota; a `minor/` one-line PR still gets its review.
+
+## Technologies and alternatives
+- Alternatives:
+  - Codex in CI on every push: spends quota on every push and needs an OpenAI key in repo
+    secrets.
+  - Codex when Claude judges it useful: rejected by me; it must run each time.
+  - Codex only when I ask: easy to forget, so most PRs go unreviewed.
