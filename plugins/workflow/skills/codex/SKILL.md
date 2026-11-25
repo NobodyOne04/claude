@@ -30,17 +30,23 @@ Check `codex login status`. Not installed or not logged in: tell me, carry on wi
 Codex, and say it was skipped. Codex never blocks work.
 
 ## Commands
-Run them from the repo root, through Bash.
+Run them through Bash. Ask and continue work from any directory; review and docs need a git
+repo, so run those from its root.
 
 | Need | Command |
 |---|---|
-| Ask something (new thread) | `codex exec -s read-only --json "<prompt>"`, keep the `thread_id` of the first event |
-| Continue that thread, with its context | `codex exec resume <thread_id> -c sandbox_mode="read-only" "<prompt>"` |
-| Review the branch | `git fetch origin main`, then `codex review --base origin/main -c sandbox_mode="read-only"` |
-| Write docs | `codex exec -s workspace-write --worktree "<prompt>"` |
+| Ask something (new thread) | `codex exec --skip-git-repo-check -s read-only -c approval_policy="never" --json "<prompt>"`, keep the `thread_id` of the first event |
+| Continue that thread, with its context | `codex exec resume --skip-git-repo-check -c sandbox_mode="read-only" -c approval_policy="never" <thread_id> "<prompt>"` |
+| Review the branch | `git fetch origin main`, then `codex review --base origin/main -c sandbox_mode="read-only" -c approval_policy="never"` |
+| Write docs | `codex exec -s workspace-write -c approval_policy="never" --worktree "<prompt>"` |
 
+- Always pass `-c approval_policy="never"`. My config lets Codex ask to escalate and has
+  its auto-reviewer approve, which runs the command **outside the sandbox**: with
+  `-s read-only` alone, a `touch` still wrote a file (2026-11-25).
 - `resume` and `review` have no `-s` flag: always pass `-c sandbox_mode="read-only"`, or
   they run with the default sandbox (my config doesn't default to read-only).
+- `--skip-git-repo-check` lets Codex start outside a git repo. It grants nothing: the sandbox
+  and approval policy above still apply.
 - Never use `--dangerously-bypass-approvals-and-sandbox`, `workspace-write` outside the
   docs case, or `danger-full-access`.
 - With `--json`, read the agent's final message from the events; don't paste raw JSONL to me.

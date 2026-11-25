@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Fixed
+- workflow 0.11.1: `codex` skill runs from any directory (`--skip-git-repo-check`) and pins `approval_policy="never"` on every call, so Codex's auto-reviewer can no longer approve escalations out of the read-only sandbox
 - `make setup` on Arch: set the stable Rust toolchain as default before adding rust-analyzer (the `rustup` package ships none), and link its rust-analyzer into `~/.local/bin`
 
 ### Changed
