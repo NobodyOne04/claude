@@ -48,11 +48,12 @@ any directory. Never call `codex` directly. No Codex call can write: docs come b
   ```
 - `--repo`: the repo the question is about, so Codex reads its files and `AGENTS.md`. Leave it
   out only for a question about no repo.
-- Output: `thread: <id>` (keep it for `resume`) or `Codex review of <base>..<head>`, then
-  Codex's final message. Copy the review header line into `## Codex review`.
-- Exit 3 prints only `Codex: skipped (<reason>)`: Codex was unavailable or the call failed.
+- Output is a card: `◆ <title>`, aligned fields, a rule, then Codex's final message. Keep
+  the `thread` field for `resume`. For a review, copy `Codex review of <base>..<head>` from
+  the title into `## Codex review`. Colour only appears in a real terminal.
+- Exit 3 prints only `✗ Codex: skipped (<reason>)`: Codex was unavailable or the call failed.
   Write that line where the result would have gone and carry on. Codex never blocks work.
-- Exit 4 prints `Codex: rerun (<reason>)`: the review would not match the branch (uncommitted
+- Exit 4 prints `↻ Codex: rerun (<reason>)`: the review would not match the branch (uncommitted
   changes, or the branch changed meanwhile). Not a skip: do what it says and run the review
   again; never push on it.
 - Prompts: say what to look at, that it's read-only, and the answer shape you want
@@ -65,11 +66,11 @@ any directory. Never call `codex` directly. No Codex call can write: docs come b
   never `docs/adr/`, agent instruction files (`SKILL.md`, `CLAUDE.md`, `AGENTS.md`, …),
   anything under `skills/`, `commands/`, `agents/` or a dot directory, symlinks,
   executables or untracked files.
-- Output: `repo:`, `manifest:`, `sha256:`, the files, then the full diff. Show me the full
-  diff (the redaction rule below applies), then run `docs-apply` with that manifest and
-  SHA-256. It refuses a changed manifest or a file changed meanwhile, re-checks the paths,
+- Output: a card with `repo`, `manifest`, `sha256`, `files` (`~` changed, `+` new), the exact
+  `next` command, then the full diff. Show me the full diff (the redaction rule below
+  applies), then run the `next` command. It refuses a changed manifest or a file changed meanwhile, re-checks the paths,
   writes the exact text, and deletes the manifest.
-- Exit 2, `Codex docs: rejected, nothing written`, then one line per reason: tell me, and fix
+- Exit 2, `✗ Codex docs: rejected, nothing written`, then one `•` line per reason: tell me, and fix
   the prompt, run `docs` again (a file changed meanwhile), or write those files yourself.
   Agent instruction files and plugin prompts are always yours to write.
 - Review the applied text like your own, then commit and open the PR (`github-flow`,
