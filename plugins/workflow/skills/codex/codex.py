@@ -74,7 +74,7 @@ def last_message(stdout):
 
 def codex_exec(args, prompt, repo):
     if repo and not os.path.isdir(repo):
-        raise Skip(f"--repo {repo}: not a directory")
+        raise Skip("--repo is not a directory")
     # outside a repo Codex refuses to start without this; it grants nothing
     cmd = ["codex", "exec", *args, "--json", *FIXED, "--skip-git-repo-check", "-"]
     p = run(cmd, prompt, cwd=repo)
@@ -119,11 +119,16 @@ def review(a, _prompt):
     if branch and remote in git("remote").split():
         if not BRANCH.match(branch) or ".." in branch:
             raise Skip("base branch name not allowed")
-        git("fetch", "--quiet", remote, "refs/heads/" + branch)
-        ref = "FETCH_HEAD"  # the tracking ref may not update under a narrow refspec
+        # own ref per run: FETCH_HEAD or a tracking ref can be moved by a concurrent fetch
+        ref = f"refs/codex-review/{os.getpid()}"
+        git("fetch", "--quiet", "--no-tags", remote, f"+refs/heads/{branch}:{ref}")
+        try:
+            base = git("rev-parse", "--verify", ref + "^{commit}")
+        finally:
+            run(["git", "update-ref", "-d", ref])
     else:
-        ref = a.base
-    base, head = git("rev-parse", "--verify", ref + "^{commit}"), git("rev-parse", "HEAD")
+        base = git("rev-parse", "--verify", a.base + "^{commit}")
+    head = git("rev-parse", "HEAD")
     p = run(["codex", "review", "--base", base, *FIXED])
     if p.returncode != 0:
         raise Skip(f"codex review exited {p.returncode}")
@@ -137,7 +142,7 @@ def review(a, _prompt):
 
 class Parser(argparse.ArgumentParser):
     def error(self, message):
-        raise Skip(f"bad arguments: {message}")
+        raise Skip("bad arguments")  # fixed: argparse would echo a mistyped prompt
 
 
 def main(argv):
@@ -256,6 +261,9 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
     skipped(*call(["ask"], "q", FAKE_RC="1")[:2], "exited 1")
     skipped(*call(["resume", "--last"], "q")[:2], "bad arguments")
     skipped(*call(["nope"], "q")[:2], "bad arguments")
+    rc, text, _ = call(["ask", "SENTINEL-PROMPT"], "q")
+    skipped(rc, text, "bad arguments")
+    assert "SENTINEL" not in text
     skipped(*call(["ask"], "q", stdout="")[:2], "no final message")
     skipped(*call(["ask"], "  \n")[:2], "empty prompt")
     skipped(*call(["ask"], "q", FAKE_LOGIN_RC="1")[:2], "not logged in")
@@ -290,6 +298,9 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
         subprocess.run(["git", "-C", repo, "remote", "add", "origin", repo], check=True)
         rc, text, seen = call(["review", "--base", "origin/main"], stdout="ok\n")
         assert rc == 0 and seen["argv"][2] == sha("main"), text
+        refs = subprocess.run(["git", "-C", repo, "for-each-ref", "refs/codex-review"],
+                              capture_output=True, text=True).stdout
+        assert refs == "", "per-run ref must be deleted"
         skipped(*call(["review", "--base", "origin/nope"])[:2], "git fetch failed")
         for bad in ("origin/-x", "origin/a:refs/heads/b", "origin/a..b"):
             skipped(*call(["review", "--base", bad])[:2], "not allowed")

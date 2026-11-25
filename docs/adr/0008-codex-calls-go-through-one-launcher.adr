@@ -59,7 +59,8 @@ retypes on each call. Approved by the owner on 2026-11-25.
   skip line. `review` also refuses uncommitted tracked changes before and after the call,
   because `codex review --base` reviews the working tree, and the header must name what was
   reviewed. A remote base is fetched as `refs/heads/<branch>` (name checked, no `:` or leading
-  `-`) and resolved from `FETCH_HEAD`. That is the line
+  `-`) into a per-run ref (`refs/codex-review/<pid>`, deleted after), so a concurrent fetch
+  can't swap the base. That is the line
   [0007](0007-where-codex-runs-in-the-flow.adr) asks Claude to record.
 - **Self-test** (`--test`, per [0004](0004-stdlib-python-scripts-with-self-tests.adr)), in
   `make check`: a fake `codex` first on `PATH` records argv and stdin and replays canned
