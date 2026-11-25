@@ -59,7 +59,8 @@ def preflight():
     repo under review supply the binary, which runs with Claude's rights."""
     global CODEX
     dirs = [d for d in os.environ.get("PATH", "").split(os.pathsep) if os.path.isabs(d)]
-    CODEX = shutil.which("codex", path=os.pathsep.join(dirs))
+    os.environ["PATH"] = os.pathsep.join(dirs)  # git and codex's children too
+    CODEX = shutil.which("codex")
     if not CODEX:
         raise Skip("codex not installed")
     if run([CODEX, "login", "status"]).returncode != 0:
@@ -124,7 +125,7 @@ def git(*args):
     if p.returncode != 0:
         # fixed text: git's stderr can carry a remote URL with credentials, and this goes in PRs
         raise Skip(f"git {args[0]} failed")
-    return p.stdout.decode().strip()
+    return p.stdout.decode("utf-8", "replace").strip()  # filenames needn't be UTF-8
 
 
 def review(a, _prompt):
