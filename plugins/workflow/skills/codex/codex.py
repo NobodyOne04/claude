@@ -26,7 +26,6 @@ for _f in ("apps", "plugins", "remote_plugin", "browser_use", "browser_use_exter
            "computer_use", "image_generation", "skill_mcp_dependency_install", "tool_suggest",
            "hooks"):  # hooks run on the host, outside the sandbox
     FIXED += ["--disable", _f]
-BRANCH = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._/-]*$")  # no options, no refspec ':'
 UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 SKIPPED = 3
 
@@ -58,7 +57,8 @@ def preflight():
 def last_message(stdout):
     """Thread id and final agent message from `codex exec --json` events."""
     thread, message = None, None
-    for line in stdout.decode("utf-8", "replace").splitlines():
+    # JSONL is split on LF only: splitlines() also breaks on U+2028 inside a JSON string
+    for line in stdout.decode("utf-8", "replace").split("\n"):
         try:
             ev = json.loads(line)
         except ValueError:
@@ -117,7 +117,10 @@ def review(a, _prompt):
         raise Skip("uncommitted changes; commit them before the review")
     remote, _, branch = a.base.partition("/")
     if branch and remote in git("remote").split():
-        if not BRANCH.match(branch) or ".." in branch:
+        # git's own ref rules (no ':', '..', spaces...), and no leading '-' that fetch could
+        # read as an option
+        if branch.startswith("-") or run(["git", "check-ref-format",
+                                          "refs/heads/" + branch]).returncode != 0:
             raise Skip("base branch name not allowed")
         # own ref per run: FETCH_HEAD or a tracking ref can be moved by a concurrent fetch
         ref = f"refs/codex-review/{os.getpid()}"
@@ -194,11 +197,12 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
     os.chmod(fake, 0o755)
     env = dict(os.environ, PATH=os.path.dirname(fake) + os.pathsep + os.environ["PATH"])
     tid = "01a2123e-43a2-7402-a22b-fa8f72410a03"
-    events = "\n".join(json.dumps(e) for e in [
+    # ensure_ascii=False: a literal U+2028 in the final message, as Codex can send it
+    events = "\n".join(json.dumps(e, ensure_ascii=False) for e in [
         {"type": "thread.started", "thread_id": tid},
         {"type": "item.completed", "item": {"type": "agent_message", "text": "first"}},
         {"type": "item.completed", "item": {"type": "command_execution"}},
-        {"type": "item.completed", "item": {"type": "agent_message", "text": "final"}},
+        {"type": "item.completed", "item": {"type": "agent_message", "text": "fin\u2028al"}},
     ]) + "\nnot json\n"
 
     def call(argv, stdin="", stdout=events, **extra):
@@ -236,7 +240,7 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
 
     nasty = "it's `rm -rf` \"$HOME\" $(x)\nline2\n"
     rc, text, seen = call(["ask"], nasty)
-    assert rc == 0 and text == f"thread: {tid}\nfinal\n", text
+    assert rc == 0 and text == f"thread: {tid}\nfin\u2028al\n", text
     assert seen["argv"][:2] == ["exec", "--json"] and has_fixed(seen["argv"]), seen
     assert "--skip-git-repo-check" in seen["argv"] and seen["argv"][-1] == "-"
     assert seen["stdin"] == nasty, "prompt must reach codex unchanged, via stdin"
@@ -302,7 +306,9 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
                               capture_output=True, text=True).stdout
         assert refs == "", "per-run ref must be deleted"
         skipped(*call(["review", "--base", "origin/nope"])[:2], "git fetch failed")
-        for bad in ("origin/-x", "origin/a:refs/heads/b", "origin/a..b"):
+        rc, text, _ = call(["review", "--base", "origin/release/v1+hotfix"])
+        skipped(rc, text, "git fetch failed")  # a valid name gets as far as the fetch
+        for bad in ("origin/-x", "origin/a:refs/heads/b", "origin/a..b", "origin/a b"):
             skipped(*call(["review", "--base", bad])[:2], "not allowed")
         assert sha("refs/heads/b") == "refs/heads/b"  # nothing was created
         skipped(*call(["review", "--base", "nope"])[:2], "rev-parse failed")
