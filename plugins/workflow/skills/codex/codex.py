@@ -54,12 +54,25 @@ def run(cmd, stdin=b"", cwd=None):
 CODEX = None  # absolute path, set once by preflight()
 
 
+def enclosing_repo(d):
+    """The repo around d (not d itself: from ~, ~/.local/bin stays trusted). Found by
+    walking up for .git, not by running git, which would search the untrusted PATH."""
+    d = os.path.realpath(d)
+    while True:
+        if os.path.exists(os.path.join(d, ".git")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return None
+        d = parent
+
+
 def preflight(repo=None):
-    """Drop PATH entries that are relative or inside the cwd or --repo (an activated
+    """Drop PATH entries that are relative or inside --repo or the cwd's repo (an activated
     `.venv/bin`): the repo under review must not supply codex or git, which run with
     Claude's rights before any sandbox applies."""
     global CODEX
-    roots = [os.path.realpath(r) for r in (os.getcwd(), repo) if r]
+    roots = [os.path.realpath(r) for r in (enclosing_repo(os.getcwd()), repo) if r]
 
     def trusted(d):
         d = os.path.realpath(d)
@@ -128,7 +141,8 @@ def resume(a, prompt):
 
 
 def git(*args):
-    p = run(["git", *args])
+    # no repo-configured hooks or fsmonitor: they would run on the host, with Claude's rights
+    p = run(["git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", *args])
     if p.returncode != 0:
         # fixed text: git's stderr can carry a remote URL with credentials, and this goes in PRs
         raise Skip(f"git {args[0]} failed")
@@ -154,7 +168,7 @@ def review(a, _prompt):
         try:
             base = git("rev-parse", "--verify", ref + "^{commit}")
         finally:
-            run(["git", "update-ref", "-d", ref])
+            run(["git", "-c", "core.hooksPath=/dev/null", "update-ref", "-d", ref])
     else:
         base = git("rev-parse", "--verify", a.base + "^{commit}")
     head = git("rev-parse", "HEAD")
@@ -315,6 +329,13 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
     # a relative PATH entry is ignored even when it holds a codex
     rel = os.path.relpath(os.path.dirname(fake))
     skipped(*call(["ask"], "q", PATH=rel)[:2], "not installed")
+    # running from a non-repo dir that contains the codex install (like ~) still finds it
+    cwd0 = os.getcwd()
+    os.chdir(tmp)
+    try:
+        assert call(["ask"], "q")[0] == 0
+    finally:
+        os.chdir(cwd0)
     # an absolute entry inside --repo (an activated .venv) is ignored too
     skipped(*call(["ask", "--repo", tmp], "q", PATH=os.path.dirname(fake))[:2], "not installed")
     long = skip_line(os.path.expanduser("~") + "/x\n" + "y" * 500)
