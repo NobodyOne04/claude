@@ -39,7 +39,12 @@ builds the diff itself. After this, every Codex call this integration makes is r
   - allowed operations: change an existing file, or create a new `.md` file (new files get
     mode 644 when applied). Never delete, rename, or change a mode;
   - the JSON must parse, `files` must be non-empty, and `text` must be valid UTF-8 and at
-    most 200 KB per file.
+    most 200 KB per file;
+  - no control characters (except tab, LF, and CR before LF), bidi marks or overrides,
+    line/paragraph separators or zero-width characters in the text, and the same check (plus
+    no tab or LF) for paths. I approve the diff in a terminal, and an ANSI escape, a bare CR
+    or a bidi override could make it show something other than what gets written (found by
+    the commit security review).
 - **Output**: pass → the launcher writes a manifest to a private temp file (`mkstemp`,
   0600): the repo root and, per file, its path, the SHA-256 of its current content (none for
   a new file) and the new text. It prints the repo, the manifest path, the manifest's
