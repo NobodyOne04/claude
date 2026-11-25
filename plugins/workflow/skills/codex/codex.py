@@ -262,8 +262,9 @@ def path_problem(root, path):
     """Why `path` may not be written by Codex, or None. Rules from ADR 0009."""
     if not isinstance(path, str) or not path:
         return "path is not a non-empty string"
-    if any(ord(c) < 0x20 or ord(c) == 0x7f for c in path) or "\\" in path:
-        return "path has a control character or backslash"
+    # same check as the text (paths print in the file list and diff), plus no tab or LF
+    if hidden_char(path) or "\t" in path or "\n" in path or "\\" in path:
+        return "path has a control, invisible or bidi character, or a backslash"
     if os.path.isabs(path):
         return "path must be relative"
     parts = path.split("/")
@@ -302,7 +303,10 @@ def path_problem(root, path):
 
 # The owner approves the diff in a terminal: these could make it show something other than
 # what gets written (ANSI escapes, a bare CR rewinding the line, bidi overrides).
-BIDI = set(range(0x202A, 0x202F)) | set(range(0x2066, 0x206A))
+# bidi marks and overrides, line/paragraph separators, zero-width characters
+INVISIBLE = (set(range(0x202A, 0x202F)) | set(range(0x2066, 0x206A))
+             | {0x061C, 0x200B, 0x200C, 0x200D, 0x200E, 0x200F, 0x2028, 0x2029, 0x2060,
+                0xFEFF})
 
 
 def hidden_char(text):
@@ -310,7 +314,7 @@ def hidden_char(text):
         o = ord(c)
         if c == "\r" and text[i + 1:i + 2] == "\n":
             continue  # CRLF line endings are fine
-        if (o < 0x20 and c not in "\n\t") or 0x7f <= o < 0xa0 or o in BIDI:
+        if (o < 0x20 and c not in "\n\t") or 0x7f <= o < 0xa0 or o in INVISIBLE:
             return f"U+{o:04X}"
     return None
 
@@ -373,7 +377,7 @@ def docs(a, prompt):
             except UnicodeEncodeError:
                 why = "text is not valid UTF-8"
         if not why and (bad := hidden_char(text)):
-            why = f"text has a control or bidi character ({bad}) that would hide in the diff"
+            why = f"text has a control, invisible or bidi character ({bad}) that would hide in the diff"
         if not why:
             try:
                 old = read_text(os.path.join(root, path))
@@ -734,7 +738,7 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
                               stdout=proposal(("README.md", "new\n"), ("docs/new.md", "hi"),
                                               ("plugins/p/README.md", "p\n"),
                                               ("café.md", "c2\n"),
-                                              ("crlf.md", "a\r\nb\r\nc\u2028d\r\n")))
+                                              ("crlf.md", "a\r\nb\r\ncd\r\n")))
         assert rc == 0, text
         assert has_fixed(seen["argv"]) and "--output-schema" in seen["argv"], seen["argv"]
         assert seen["stdin"].endswith("update the readme") and "JSON" in seen["stdin"]
@@ -751,8 +755,9 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
                "plugins/s/SKILL.md": "agent instruction", "CLAUDE.md": "agent instruction",
                "sub/agents.MD": "agent instruction", "AGENTS.override.md": "agent instruction",
                "CLAUDE.local.md": "agent instruction", ".github/x.md": "dot directory",
-               "../x.md": "'..'", "/abs.md": "relative", "a\\b.md": "control character",
-               "a\nb.md": "control character", "a\tb.md": "control character",
+               "../x.md": "'..'", "/abs.md": "relative", "a\\b.md": "backslash",
+               "a\nb.md": "control", "a\tb.md": "control", "a\u0085b.md": "control",
+               "a\u202eb.md": "bidi", "a\u200fb.md": "bidi", "a\u200bb.md": "invisible",
                "linkdir/inner.md": "symlink", "alias.md": "symlink",
                "run.md": "non-executable", "untracked.md": "not tracked",
                "readme.md": "exactly this name"}
@@ -770,6 +775,9 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
                            (proposal(("README.md", "shown\rhidden\n")), "U+000D"),
                            (proposal(("README.md", "a\u202eb\n")), "U+202E"),
                            (proposal(("README.md", "a\u0085b\n")), "U+0085"),
+                           (proposal(("README.md", "a\u2028b\n")), "U+2028"),
+                           (proposal(("README.md", "a\u200bb\n")), "U+200B"),
+                           (proposal(("README.md", "a\u061cb\n")), "U+061C"),
                            (events.replace("fin\u2028al", "not json"), "not one JSON"),
                            (events.replace("fin\u2028al", 'Here: {\\"files\\": []}'),
                             "not one JSON"),
@@ -785,7 +793,7 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
         os.remove(man)
         rc, text, _ = call(["docs", "--repo", d], "t",
                            stdout=proposal(("README.md", "new\n"), ("docs/new.md", "hi"),
-                                           ("crlf.md", "a\r\nb\r\nc\u2028d\r\n")))
+                                           ("crlf.md", "a\r\nb\r\ncd\r\n")))
         man, digest = manifest_of(text)
         rc, text, _ = call(["docs-apply", "--repo", repo, "--sha256", digest, man])
         assert rc == REJECTED and "another repo" in text, text
@@ -800,7 +808,7 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
         assert rc == 0, text
         assert open(os.path.join(d, "README.md")).read() == "new\n"
         assert open(os.path.join(d, "docs/new.md")).read() == "hi"
-        assert open(os.path.join(d, "crlf.md"), newline="").read() == "a\r\nb\r\nc\u2028d\r\n"
+        assert open(os.path.join(d, "crlf.md"), newline="").read() == "a\r\nb\r\ncd\r\n"
         assert not os.path.exists(man)
     finally:
         os.chdir(cwd)
