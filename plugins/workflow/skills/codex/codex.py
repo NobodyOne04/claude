@@ -48,17 +48,24 @@ def run(cmd, stdin=b"", cwd=None):
     try:
         return subprocess.run(cmd, input=stdin, capture_output=True, cwd=cwd)
     except OSError as e:
-        raise Skip(f"{cmd[0]}: {e.strerror}")
+        raise Skip(f"{os.path.basename(cmd[0])} could not start")  # no paths in PR text
 
 
 CODEX = None  # absolute path, set once by preflight()
 
 
-def preflight():
-    """Find codex on absolute PATH entries only: a relative one (`.venv/bin`) would let the
-    repo under review supply the binary, which runs with Claude's rights."""
+def preflight(repo=None):
+    """Drop PATH entries that are relative or inside the cwd or --repo (an activated
+    `.venv/bin`): the repo under review must not supply codex or git, which run with
+    Claude's rights before any sandbox applies."""
     global CODEX
-    dirs = [d for d in os.environ.get("PATH", "").split(os.pathsep) if os.path.isabs(d)]
+    roots = [os.path.realpath(r) for r in (os.getcwd(), repo) if r]
+
+    def trusted(d):
+        d = os.path.realpath(d)
+        return not any(d == r or d.startswith(r + os.sep) for r in roots)
+    dirs = [d for d in os.environ.get("PATH", "").split(os.pathsep)
+            if os.path.isabs(d) and trusted(d)]
     os.environ["PATH"] = os.pathsep.join(dirs)  # git and codex's children too
     CODEX = shutil.which("codex")
     if not CODEX:
@@ -186,7 +193,7 @@ def main(argv):
         prompt = sys.stdin.buffer.read() if a.reads_prompt else b""
         if a.reads_prompt and not prompt.strip():
             raise Skip("empty prompt on stdin")
-        preflight()
+        preflight(getattr(a, "repo", None))
         print(a.fn(a, prompt))
         return 0
     except Skip as e:
@@ -276,9 +283,11 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
                 "danger-full-access", "--trust"):
         assert not any(bad in x for x in seen["argv"]), bad
 
-    rc, text, seen = call(["ask", "--repo", tmp], "q")
+    work = os.path.join(tmp, "work")
+    os.makedirs(work)
+    rc, text, seen = call(["ask", "--repo", work], "q")
     assert rc == 0
-    assert os.path.realpath(seen["cwd"]) == os.path.realpath(tmp)
+    assert os.path.realpath(seen["cwd"]) == os.path.realpath(work)
 
     rc, text, seen = call(["resume", tid], "q")
     assert rc == 0 and seen["argv"][:3] == ["exec", "resume", tid] and has_fixed(seen["argv"])
@@ -306,6 +315,8 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
     # a relative PATH entry is ignored even when it holds a codex
     rel = os.path.relpath(os.path.dirname(fake))
     skipped(*call(["ask"], "q", PATH=rel)[:2], "not installed")
+    # an absolute entry inside --repo (an activated .venv) is ignored too
+    skipped(*call(["ask", "--repo", tmp], "q", PATH=os.path.dirname(fake))[:2], "not installed")
     long = skip_line(os.path.expanduser("~") + "/x\n" + "y" * 500)
     assert long.startswith("Codex: skipped (~/x y") and len(long) == 200, long
     odd = "\n".join(json.dumps(e) for e in [
