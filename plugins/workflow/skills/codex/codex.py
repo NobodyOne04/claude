@@ -300,6 +300,21 @@ def path_problem(root, path):
     return None
 
 
+# The owner approves the diff in a terminal: these could make it show something other than
+# what gets written (ANSI escapes, a bare CR rewinding the line, bidi overrides).
+BIDI = set(range(0x202A, 0x202F)) | set(range(0x2066, 0x206A))
+
+
+def hidden_char(text):
+    for i, c in enumerate(text):
+        o = ord(c)
+        if c == "\r" and text[i + 1:i + 2] == "\n":
+            continue  # CRLF line endings are fine
+        if (o < 0x20 and c not in "\n\t") or 0x7f <= o < 0xa0 or o in BIDI:
+            return f"U+{o:04X}"
+    return None
+
+
 def label(path):
     return repr(path)[:80]  # Codex-supplied text: bounded, quoted
 
@@ -357,6 +372,8 @@ def docs(a, prompt):
                     why = f"text is not a string of at most {MAX_TEXT} bytes"
             except UnicodeEncodeError:
                 why = "text is not valid UTF-8"
+        if not why and (bad := hidden_char(text)):
+            why = f"text has a control or bidi character ({bad}) that would hide in the diff"
         if not why:
             try:
                 old = read_text(os.path.join(root, path))
@@ -749,6 +766,10 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
         for reply, why in ((proposal(("a.md", "1"), ("A.md", "2")), "listed twice"),
                            (proposal(), "non-empty files list"),
                            (lone, "not valid UTF-8"),
+                           (proposal(("README.md", "ok\u001b[2Khidden\n")), "U+001B"),
+                           (proposal(("README.md", "shown\rhidden\n")), "U+000D"),
+                           (proposal(("README.md", "a\u202eb\n")), "U+202E"),
+                           (proposal(("README.md", "a\u0085b\n")), "U+0085"),
                            (events.replace("fin\u2028al", "not json"), "not one JSON"),
                            (events.replace("fin\u2028al", 'Here: {\\"files\\": []}'),
                             "not one JSON"),
