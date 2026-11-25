@@ -186,7 +186,7 @@ def last_message(stdout):
 
 def exit_reason(name, p):
     # fixed text only (stderr echoes the prompt), but say which known failure it was
-    if b"usage limit" in p.stderr:
+    if b"usage limit" in p.stderr + p.stdout:  # with --json the error is an event on stdout
         return "codex usage limit reached"
     return f"{name} exited {p.returncode}"
 
@@ -698,6 +698,8 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
                        FAKE_ERR="prompt\nERROR: You've hit your usage limit. Try at 10 PM\n")
     skipped(rc, text, "usage limit reached")
     assert "10 PM" not in text
+    limit_event = json.dumps({"type": "error", "message": "You've hit your usage limit."})
+    skipped(*call(["ask"], "q", FAKE_RC="1", stdout=limit_event)[:2], "usage limit reached")
 
     # review, in a throwaway repo whose "origin/main" is a local branch
     repo = os.path.join(tmp, "repo")
