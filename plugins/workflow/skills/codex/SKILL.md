@@ -30,8 +30,9 @@ Check `codex login status`. Not installed or not logged in: tell me, carry on wi
 Codex, and say it was skipped. Codex never blocks work.
 
 ## Commands
-Run them through Bash. Ask and continue work from any directory; review and docs need a git
-repo, so run those from its root.
+Run them through Bash. Anything about a repo (review, audit, ADR critique, root cause, docs)
+runs from that repo's root, so Codex reads the right files and `AGENTS.md`. A question about
+no repo can run from any directory: that's what `--skip-git-repo-check` is for.
 
 | Need | Command |
 |---|---|
