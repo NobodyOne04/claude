@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -48,10 +49,54 @@ class Rejected(Exception):
     """Codex's docs proposal broke a rule: nothing was written."""
 
 
+# ── Look ─────────────────────────────────────────────────────────────────────────────────
+# Cards: an icon and title, aligned fields, a rule, then the body. Colour only in a real
+# terminal (or FORCE_COLOR=1), never with NO_COLOR: Claude reads plain text. The lines Claude
+# copies into PRs ("Codex review of A..B", "Codex: skipped (...)") keep their exact words.
+SAFETY = "read-only · approvals off · connectors off"
+RULE = "─" * 64
+
+
+def color_on():
+    if os.environ.get("NO_COLOR"):
+        return False
+    return bool(os.environ.get("FORCE_COLOR")) or sys.stdout.isatty()
+
+
+def paint(style, text):
+    codes = {"title": "1;36", "ok": "1;32", "bad": "1;31", "warn": "1;33", "dim": "2",
+             "add": "32", "del": "31", "hunk": "36", "key": "2"}
+    return f"\033[{codes[style]}m{text}\033[0m" if color_on() else text
+
+
+def card(icon, title, fields, body=""):
+    """  ◆ title
+           key       value          (a list value continues on aligned lines)
+         ────────
+         body"""
+    out = [paint("title", f"{icon} {title}")]
+    for key, value in fields:
+        values = value if isinstance(value, list) else [value]
+        for i, v in enumerate(values):
+            out.append(f"  {paint('key', f'{key:<9}') if i == 0 else ' ' * 9} {v}")
+    if body:
+        out += [paint("dim", RULE), body.rstrip("\n")]
+    return "\n".join(out)
+
+
+def paint_diff(diff):
+    style = {"+++": "title", "---": "title", "+": "add", "-": "del", "@": "hunk", "\\": "dim"}
+    lines = []
+    for line in diff.split("\n"):
+        key = line[:3] if line[:3] in ("+++", "---") else line[:1]
+        lines.append(paint(style[key], line) if key in style and line else line)
+    return "\n".join(lines)
+
+
 def skip_line(text):
-    """The whole `Codex: skipped (...)` line, at most 200 chars, home shortened to ~."""
+    """The whole `✗ Codex: skipped (...)` line, at most 200 chars, home shortened to ~."""
     text = " ".join(str(text).split()).replace(os.path.expanduser("~"), "~") or "no reason given"
-    return f"Codex: skipped ({text[:200 - len('Codex: skipped ()')]})"
+    return f"✗ Codex: skipped ({text[:200 - len('✗ Codex: skipped ()')]})"
 
 
 def run(cmd, stdin=b"", cwd=None):
@@ -141,7 +186,7 @@ def last_message(stdout):
 
 def exit_reason(name, p):
     # fixed text only (stderr echoes the prompt), but say which known failure it was
-    if b"usage limit" in p.stderr:
+    if b"usage limit" in p.stderr + p.stdout:  # with --json the error is an event on stdout
         return "codex usage limit reached"
     return f"{name} exited {p.returncode}"
 
@@ -164,7 +209,7 @@ def ask(a, prompt):
     thread, message = codex_exec([], prompt, a.repo)
     if not UUID.fullmatch(str(thread)):
         raise Skip("no valid thread id from codex")
-    return f"thread: {thread}\n{message}"
+    return card("◆", "Codex · ask", [("thread", thread), ("mode", SAFETY)], message)
 
 
 def resume(a, prompt):
@@ -174,7 +219,7 @@ def resume(a, prompt):
     thread = thread or a.thread_id
     if not UUID.fullmatch(str(thread)):
         raise Skip("no valid thread id from codex")
-    return f"thread: {thread}\n{message}"
+    return card("◆", "Codex · resume", [("thread", thread), ("mode", SAFETY)], message)
 
 
 def git(*args, cwd=None, stdin=b""):
@@ -219,7 +264,7 @@ def review(a, _prompt):
     text = p.stdout.decode("utf-8", "replace").strip()
     if not text:
         raise Skip("codex review printed nothing")
-    return f"Codex review of {base[:12]}..{head[:12]}\n{text}"
+    return card("◆", f"Codex review of {base[:12]}..{head[:12]}", [("mode", SAFETY)], text)
 
 
 DOCS_SCHEMA = {
@@ -398,9 +443,14 @@ def docs(a, prompt):
     fd, out = tempfile.mkstemp(prefix="codex-docs-", suffix=".json")  # 0600
     with os.fdopen(fd, "wb") as f:
         f.write(body)
-    return (f"repo: {root}\nmanifest: {out}\nsha256: {hashlib.sha256(body).hexdigest()}\n"
-            + "".join(f"{'new ' if p['old_sha256'] is None else ''}{p['path']}\n" for p in plan)
-            + "\n" + "".join(diff))
+    digest = hashlib.sha256(body).hexdigest()
+    files = [f"{paint('add', '+') if p['old_sha256'] is None else paint('warn', '~')} {p['path']}"
+             for p in plan]
+    nxt = (f"python3 -I {shlex.quote(os.path.realpath(__file__))} docs-apply "
+           f"--repo {shlex.quote(root)} --sha256 {digest} {shlex.quote(out)}")
+    return card("◆", "Codex docs · checked, nothing written yet",
+                [("repo", root), ("manifest", out), ("sha256", digest), ("files", files),
+                 ("next", nxt), ("mode", SAFETY)], paint_diff("\n".join(diff)))
 
 
 def docs_apply(a, _prompt):
@@ -435,7 +485,8 @@ def docs_apply(a, _prompt):
         with open(full, "w", encoding="utf-8", newline="") as f:  # exact text, no translation
             f.write(p["text"])
     os.remove(a.manifest)
-    return f"applied to {root}: " + ", ".join(p["path"] for p in m["files"])
+    return card(paint("ok", "✓"), "Codex docs · applied",
+                [("repo", root), ("files", [p["path"] for p in m["files"]])])
 
 
 class Parser(argparse.ArgumentParser):
@@ -473,15 +524,15 @@ def main(argv):
         print(a.fn(a, prompt))
         return 0
     except Skip as e:
-        print(skip_line(e))
+        print(paint("bad", skip_line(e)))
         return SKIPPED
     except Rerun as e:
-        print(f"Codex: rerun ({e})")
+        print(paint("warn", f"↻ Codex: rerun ({e})"))
         return RERUN
     except Rejected as e:
-        print("Codex docs: rejected, nothing written")
+        print(paint("bad", "✗ Codex docs: rejected, nothing written"))
         for why in e.args[0]:
-            print(f"- {why}")
+            print(f"  • {why}")
         return REJECTED
 
 
@@ -556,7 +607,8 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
 
     nasty = "it's `rm -rf` \"$HOME\" $(x)\nline2\n"
     rc, text, seen = call(["ask"], nasty)
-    assert rc == 0 and text == f"thread: {tid}\nfin\u2028al\n", text
+    assert rc == 0 and text.startswith("◆ Codex · ask\n") and f"thread    {tid}\n" in text, text
+    assert text.endswith(f"{RULE}\nfin\u2028al\n") and SAFETY in text and "\033" not in text
     assert seen["argv"][:2] == ["exec", "--json"] and has_fixed(seen["argv"]), seen
     assert "--skip-git-repo-check" in seen["argv"] and seen["argv"][-1] == "-"
     assert seen["stdin"] == nasty, "prompt must reach codex unchanged, via stdin"
@@ -577,7 +629,7 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
         assert rc == SKIPPED and seen is None and "not a UUID" in text, (bad_id, text)
 
     def skipped(rc, text, why):
-        assert rc == SKIPPED and text.startswith("Codex: skipped (") and why in text, text
+        assert rc == SKIPPED and text.startswith("✗ Codex: skipped (") and why in text, text
         assert text.count("\n") == 1 and len(text) <= 201, text
 
     skipped(*call(["ask"], "q", FAKE_RC="1")[:2], "exited 1")
@@ -596,6 +648,15 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
     # a relative PATH entry is ignored even when it holds a codex
     rel = os.path.relpath(os.path.dirname(fake))
     skipped(*call(["ask"], "q", PATH=rel)[:2], "not installed")
+    rc, text, _ = call(["ask"], "q", FORCE_COLOR="1")
+    assert rc == 0 and "\033[1;36m◆ Codex · ask\033[0m" in text, text
+    assert "\033" not in call(["ask"], "q", FORCE_COLOR="1", NO_COLOR="1")[1]
+    os.environ["FORCE_COLOR"] = "1"
+    try:
+        assert paint_diff("+new\n-old\n@@ -1 +1 @@\n ctx") == (
+            "\033[32m+new\033[0m\n\033[31m-old\033[0m\n\033[36m@@ -1 +1 @@\033[0m\n ctx")
+    finally:
+        del os.environ["FORCE_COLOR"]
     # running from a non-repo dir that contains the codex install (like ~) still finds it
     cwd0 = os.getcwd()
     os.chdir(tmp)
@@ -618,7 +679,7 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
     # an absolute entry inside --repo (an activated .venv) is ignored too
     skipped(*call(["ask", "--repo", tmp], "q", PATH=os.path.dirname(fake))[:2], "not installed")
     long = skip_line(os.path.expanduser("~") + "/x\n" + "y" * 500)
-    assert long.startswith("Codex: skipped (~/x y") and len(long) == 200, long
+    assert long.startswith("✗ Codex: skipped (~/x y") and len(long) == 200, long
     odd = "\n".join(json.dumps(e) for e in [
         {"type": "thread.started", "thread_id": tid},
         {"type": "item.completed", "item": "a string"},
@@ -637,6 +698,8 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
                        FAKE_ERR="prompt\nERROR: You've hit your usage limit. Try at 10 PM\n")
     skipped(rc, text, "usage limit reached")
     assert "10 PM" not in text
+    limit_event = json.dumps({"type": "error", "message": "You've hit your usage limit."})
+    skipped(*call(["ask"], "q", FAKE_RC="1", stdout=limit_event)[:2], "usage limit reached")
 
     # review, in a throwaway repo whose "origin/main" is a local branch
     repo = os.path.join(tmp, "repo")
@@ -653,7 +716,8 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
     try:
         rc, text, seen = call(["review", "--base", "main"], stdout="looks fine\n")
         assert rc == 0, text
-        assert text == f"Codex review of {sha('main')[:12]}..{sha('HEAD')[:12]}\nlooks fine\n", text
+        assert text.split("\n")[0] == f"◆ Codex review of {sha('main')[:12]}..{sha('HEAD')[:12]}", text
+        assert text.endswith(f"{RULE}\nlooks fine\n"), text
         assert seen["argv"][:3] == ["review", "--base", sha("main")] and has_fixed(seen["argv"])
         # remote base: fetched, resolved from FETCH_HEAD (no tracking ref exists here)
         subprocess.run(["git", "-C", repo, "remote", "add", "origin", repo], check=True)
@@ -673,7 +737,7 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
             f.write("x")
         subprocess.run(g + ["add", "t.txt"], check=True)
         rc, text, _ = call(["review", "--base", "main"])
-        assert rc == RERUN and text.startswith("Codex: rerun (uncommitted"), text
+        assert rc == RERUN and text.startswith("↻ Codex: rerun (uncommitted"), text
         subprocess.run(g + ["commit", "-q", "-m", "t"], check=True)
         skipped(*call(["review", "--base=--output=x"])[:2], "must be a ref")
         skipped(*call(["review", "--base", "main"], stdout="")[:2], "printed nothing")
@@ -731,8 +795,8 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
         subprocess.run(gd + ["commit", "-q", "-m", "more"], check=True)
 
         def manifest_of(text):
-            return (text.split("manifest: ")[1].split("\n")[0],
-                    text.split("sha256: ")[1].split("\n")[0])
+            return (re.search(r"^  manifest +(\S+)$", text, re.M).group(1),
+                    re.search(r"^  sha256 +(\S+)$", text, re.M).group(1))
 
         rc, text, seen = call(["docs", "--repo", d], "update the readme",
                               stdout=proposal(("README.md", "new\n"), ("docs/new.md", "hi"),
@@ -742,7 +806,8 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
         assert rc == 0, text
         assert has_fixed(seen["argv"]) and "--output-schema" in seen["argv"], seen["argv"]
         assert seen["stdin"].endswith("update the readme") and "JSON" in seen["stdin"]
-        assert "-old\n+new" in text and "new docs/new.md" in text, text
+        assert "-old\n+new" in text and "\n            + docs/new.md\n" in text, text
+        assert "~ README.md" in text and "docs-apply --repo" in text, text
         assert text.count("\\ No newline at end of file") == 1, text  # only for "hi"
         man, digest = manifest_of(text)
         assert stat.S_IMODE(os.stat(man).st_mode) == 0o600
