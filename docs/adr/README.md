@@ -11,3 +11,4 @@ Format and lifecycle: `docs/adr/NNNN-short-title.adr`, statuses Proposed, Accept
 | [0005](0005-adr-before-code-one-adr-per-pr.adr) | ADR before code, granular ADRs, one ADR per PR | Accepted |
 | [0006](0006-codex-read-only-second-agent.adr) | Codex is a read-only second agent, called through its CLI | Accepted |
 | [0007](0007-where-codex-runs-in-the-flow.adr) | Where Codex runs in the flow | Accepted |
+| [0008](0008-codex-calls-go-through-one-launcher.adr) | Codex calls go through one tested launcher | Accepted |

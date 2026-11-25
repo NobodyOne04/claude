@@ -25,32 +25,33 @@ The only skip: Codex unavailable (not installed, not logged in, the call fails).
 `Codex: skipped (<reason>)` where the result would have gone. Never skip because a change
 looks small.
 
-## Before the first call
-Check `codex login status`. Not installed or not logged in: tell me, carry on without
-Codex, and say it was skipped. Codex never blocks work.
-
 ## Commands
-Run them through Bash. Anything about a repo (review, audit, ADR critique, root cause, docs)
-runs from that repo's root, so Codex reads the right files and `AGENTS.md`. A question about
-no repo can run from any directory: that's what `--skip-git-repo-check` is for.
+Every read-only call goes through the launcher next to this file (ADR 0008). It sets the
+sandbox, approval policy, MCP and connector flags itself, checks `codex login status`, and
+works from any directory. Never call `codex` directly for these.
 
 | Need | Command |
 |---|---|
-| Ask something (new thread) | `codex exec --skip-git-repo-check -s read-only -c approval_policy="never" --json "<prompt>"`, keep the `thread_id` of the first event |
-| Continue that thread, with its context | `codex exec resume --skip-git-repo-check -c sandbox_mode="read-only" -c approval_policy="never" <thread_id> "<prompt>"` |
-| Review the branch | `git fetch origin main`, then `codex review --base origin/main -c sandbox_mode="read-only" -c approval_policy="never"` |
-| Write docs | `codex exec -s workspace-write -c approval_policy="never" --worktree "<prompt>"` |
+| Ask something (new thread) | `python3 -I <this skill's dir>/codex.py ask --repo <repo root>` |
+| Continue that thread | `python3 -I <this skill's dir>/codex.py resume <thread_id> --repo <repo root>` |
+| Review the branch | from the repo root: `python3 -I <this skill's dir>/codex.py review` (`--base REF`, default `origin/main`) |
+| Write docs | from the repo root: `codex exec -s workspace-write -c approval_policy="never" --disable apps --worktree "<prompt>"` (until ADR 0009) |
 
-- Always pass `-c approval_policy="never"`. My config lets Codex ask to escalate and has
-  its auto-reviewer approve, which runs the command **outside the sandbox**: with
-  `-s read-only` alone, a `touch` still wrote a file (2026-11-25).
-- `resume` and `review` have no `-s` flag: always pass `-c sandbox_mode="read-only"`, or
-  they run with the default sandbox (my config doesn't default to read-only).
-- `--skip-git-repo-check` lets Codex start outside a git repo. It grants nothing: the sandbox
-  and approval policy above still apply.
-- Never use `--dangerously-bypass-approvals-and-sandbox`, `workspace-write` outside the
-  docs case, or `danger-full-access`.
-- With `--json`, read the agent's final message from the events; don't paste raw JSONL to me.
+- The prompt goes on stdin, as a quoted heredoc with this exact delimiter, which never
+  appears inside a prompt:
+  ```
+  python3 -I <dir>/codex.py ask --repo . <<'CODEX_PROMPT_END'
+  <prompt>
+  CODEX_PROMPT_END
+  ```
+- `--repo`: the repo the question is about, so Codex reads its files and `AGENTS.md`. Leave it
+  out only for a question about no repo.
+- Output: `thread: <id>` (keep it for `resume`) or `Codex review of <base>..<head>`, then
+  Codex's final message. Copy the review header line into `## Codex review`.
+- Exit 3 prints only `Codex: skipped (<reason>)`: Codex was unavailable or the call failed.
+  Write that line where the result would have gone and carry on. Codex never blocks work.
+- Never use `--dangerously-bypass-approvals-and-sandbox`, `--trust`, `workspace-write`
+  outside the docs case, or `danger-full-access`.
 - Prompts: say what to look at, that it's read-only, and the answer shape you want
   ("list findings as `file:line: problem`; say 'nothing found' if none").
 
