@@ -72,7 +72,9 @@ def preflight(repo=None):
     `.venv/bin`): the repo under review must not supply codex or git, which run with
     Claude's rights before any sandbox applies."""
     global CODEX
-    roots = [os.path.realpath(r) for r in (enclosing_repo(os.getcwd()), repo) if r]
+    # --repo may be a subfolder: its whole enclosing repo is untrusted too
+    candidates = (enclosing_repo(os.getcwd()), repo, repo and enclosing_repo(repo))
+    roots = [os.path.realpath(r) for r in candidates if r]
 
     def trusted(d):
         d = os.path.realpath(d)
@@ -336,6 +338,14 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
         assert call(["ask"], "q")[0] == 0
     finally:
         os.chdir(cwd0)
+    # --repo a subfolder of a repo whose .venv/bin holds codex: ignored, from outside too
+    outer = os.path.join(tmp, "outer")
+    os.makedirs(os.path.join(outer, ".git"))
+    os.makedirs(os.path.join(outer, "sub"))
+    venv = os.path.join(outer, ".venv", "bin")
+    shutil.copytree(os.path.dirname(fake), venv)
+    skipped(*call(["ask", "--repo", os.path.join(outer, "sub")], "q", PATH=venv)[:2],
+            "not installed")
     # an absolute entry inside --repo (an activated .venv) is ignored too
     skipped(*call(["ask", "--repo", tmp], "q", PATH=os.path.dirname(fake))[:2], "not installed")
     long = skip_line(os.path.expanduser("~") + "/x\n" + "y" * 500)
