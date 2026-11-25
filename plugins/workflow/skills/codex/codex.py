@@ -33,9 +33,16 @@ class Skip(Exception):
     pass
 
 
-def reason_line(text):
-    text = " ".join(str(text).split()).replace(os.path.expanduser("~"), "~")
-    return text[:200] or "no reason given"
+def skip_line(text):
+    """The whole `Codex: skipped (...)` line, at most 200 chars, home shortened to ~."""
+    text = " ".join(str(text).split()).replace(os.path.expanduser("~"), "~") or "no reason given"
+    return f"Codex: skipped ({text[:200 - len('Codex: skipped ()')]})"
+
+
+def last_line(stderr):
+    # codex echoes the whole session (prompt included) on stderr; the error is the last line
+    lines = [x for x in stderr.decode("utf-8", "replace").splitlines() if x.strip()]
+    return lines[-1] if lines else "no error output"
 
 
 def run(cmd, stdin=b"", cwd=None):
@@ -76,7 +83,7 @@ def codex_exec(args, prompt, repo):
     cmd = ["codex", "exec", *args, "--json", *FIXED, "--skip-git-repo-check", "-"]
     p = run(cmd, prompt, cwd=repo)
     if p.returncode != 0:
-        raise Skip(f"codex exited {p.returncode}: {p.stderr.decode('utf-8', 'replace')}")
+        raise Skip(f"codex exited {p.returncode}: {last_line(p.stderr)}")
     thread, message = last_message(p.stdout)
     if not message:
         raise Skip("no final message from codex")
@@ -85,6 +92,8 @@ def codex_exec(args, prompt, repo):
 
 def ask(a, prompt):
     thread, message = codex_exec([], prompt, a.repo)
+    if not UUID.match(str(thread)):
+        raise Skip("no valid thread id from codex")
     return f"thread: {thread}\n{message}"
 
 
@@ -98,20 +107,27 @@ def resume(a, prompt):
 def git(*args):
     p = run(["git", *args])
     if p.returncode != 0:
-        raise Skip(f"git {args[0]} failed: {p.stderr.decode('utf-8', 'replace')}")
+        # fixed text: git's stderr can carry a remote URL with credentials, and this goes in PRs
+        raise Skip(f"git {args[0]} failed")
     return p.stdout.decode().strip()
 
 
 def review(a, _prompt):
     if a.base.startswith("-"):
         raise Skip("base must be a ref")
+    # codex reviews `git diff <base>`, which includes uncommitted edits: the header would lie
+    if git("status", "--porcelain", "--untracked-files=no"):
+        raise Skip("uncommitted changes; commit them before the review")
     remote, _, branch = a.base.partition("/")
     if branch and remote in git("remote").split():
         git("fetch", "--quiet", remote, branch)
-    base, head = git("rev-parse", "--verify", a.base + "^{commit}"), git("rev-parse", "HEAD")
+        ref = "FETCH_HEAD"  # the tracking ref may not update under a narrow refspec
+    else:
+        ref = a.base
+    base, head = git("rev-parse", "--verify", ref + "^{commit}"), git("rev-parse", "HEAD")
     p = run(["codex", "review", "--base", base, *FIXED])
     if p.returncode != 0:
-        raise Skip(f"codex review exited {p.returncode}: {p.stderr.decode('utf-8', 'replace')}")
+        raise Skip(f"codex review exited {p.returncode}: {last_line(p.stderr)}")
     text = p.stdout.decode("utf-8", "replace").strip()
     if not text:
         raise Skip("codex review printed nothing")
@@ -142,7 +158,7 @@ def main(argv):
         print(a.fn(a, prompt))
         return 0
     except Skip as e:
-        print(f"Codex: skipped ({reason_line(e)})")
+        print(skip_line(e))
         return SKIPPED
 
 
@@ -162,6 +178,7 @@ if sys.argv[1:3] == ["login", "status"]:
     sys.exit(int(os.environ.get("FAKE_LOGIN_RC", "0")))
 json.dump({{"argv": sys.argv[1:], "stdin": sys.stdin.read(), "cwd": os.getcwd()}},
           open({log!r}, "w"))
+sys.stderr.write(os.environ.get("FAKE_ERR", ""))
 sys.stdout.write(open({out!r}).read())
 sys.exit(int(os.environ.get("FAKE_RC", "0")))
 """)
@@ -229,7 +246,7 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
 
     def skipped(rc, text, why):
         assert rc == SKIPPED and text.startswith("Codex: skipped (") and why in text, text
-        assert text.count("\n") == 1 and len(text) < 230, text
+        assert text.count("\n") == 1 and len(text) <= 201, text
 
     skipped(*call(["ask"], "q", FAKE_RC="1")[:2], "exited 1")
     skipped(*call(["ask"], "q", stdout="")[:2], "no final message")
@@ -237,7 +254,13 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
     skipped(*call(["ask"], "q", FAKE_LOGIN_RC="1")[:2], "not logged in")
     skipped(*call(["ask", "--repo", os.path.join(tmp, "nope")], "q")[:2], "not a directory")
     skipped(*call(["ask"], "q", PATH="/nonexistent")[:2], "not installed")
-    assert reason_line(os.path.expanduser("~") + "/x\n" + "y" * 500).startswith("~/x y")
+    long = skip_line(os.path.expanduser("~") + "/x\n" + "y" * 500)
+    assert long.startswith("Codex: skipped (~/x y") and len(long) == 200, long
+    rc, text, _ = call(["ask"], "q", stdout=events.replace(tid, "garbage"))
+    skipped(rc, text, "no valid thread id")
+    rc, text, _ = call(["ask"], "q", FAKE_RC="1", FAKE_ERR="user prompt secret\nreal error\n")
+    skipped(rc, text, "real error")
+    assert "secret" not in text
 
     # review, in a throwaway repo whose "origin/main" is a local branch
     repo = os.path.join(tmp, "repo")
@@ -256,7 +279,17 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
         assert rc == 0, text
         assert text == f"Codex review of {sha('main')[:12]}..{sha('HEAD')[:12]}\nlooks fine\n", text
         assert seen["argv"][:3] == ["review", "--base", sha("main")] and has_fixed(seen["argv"])
+        # remote base: fetched, resolved from FETCH_HEAD (no tracking ref exists here)
+        subprocess.run(["git", "-C", repo, "remote", "add", "origin", repo], check=True)
+        rc, text, seen = call(["review", "--base", "origin/main"], stdout="ok\n")
+        assert rc == 0 and seen["argv"][2] == sha("main"), text
+        skipped(*call(["review", "--base", "origin/nope"])[:2], "git fetch failed")
         skipped(*call(["review", "--base", "nope"])[:2], "rev-parse failed")
+        with open(os.path.join(repo, "t.txt"), "w") as f:
+            f.write("x")
+        subprocess.run(g + ["add", "t.txt"], check=True)
+        skipped(*call(["review", "--base", "main"])[:2], "uncommitted changes")
+        subprocess.run(g + ["commit", "-q", "-m", "t"], check=True)
         skipped(*call(["review", "--base=--output=x"])[:2], "must be a ref")
         skipped(*call(["review", "--base", "main"], stdout="")[:2], "printed nothing")
         skipped(*call(["review", "--base", "main"], stdout="x", FAKE_RC="2")[:2], "exited 2")
