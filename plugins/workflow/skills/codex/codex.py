@@ -139,6 +139,13 @@ def last_message(stdout):
     return thread, message
 
 
+def exit_reason(name, p):
+    # fixed text only (stderr echoes the prompt), but say which known failure it was
+    if b"usage limit" in p.stderr:
+        return "codex usage limit reached"
+    return f"{name} exited {p.returncode}"
+
+
 def codex_exec(args, prompt, repo):
     if repo and not os.path.isdir(repo):
         raise Skip("--repo is not a directory")
@@ -146,8 +153,7 @@ def codex_exec(args, prompt, repo):
     cmd = [CODEX, "exec", *args, "--json", *FIXED, "--skip-git-repo-check", "-"]
     p = run(cmd, prompt, cwd=repo)
     if p.returncode != 0:
-        # fixed text: codex's stderr echoes the prompt and tool output, and this line goes in PRs
-        raise Skip(f"codex exited {p.returncode}")
+        raise Skip(exit_reason("codex", p))
     thread, message = last_message(p.stdout)
     if not message:
         raise Skip("no final message from codex")
@@ -209,7 +215,7 @@ def review(a, _prompt):
     if git("rev-parse", "HEAD") != head or git("status", "--porcelain", "--untracked-files=no"):
         raise Rerun("the branch changed during the review; run it again")
     if p.returncode != 0:
-        raise Skip(f"codex review exited {p.returncode}")
+        raise Skip(exit_reason("codex review", p))
     text = p.stdout.decode("utf-8", "replace").strip()
     if not text:
         raise Skip("codex review printed nothing")
@@ -606,6 +612,10 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
     rc, text, _ = call(["ask"], "q", FAKE_RC="1", FAKE_ERR="user prompt secret\nreal error\n")
     skipped(rc, text, "codex exited 1")
     assert "secret" not in text and "real error" not in text
+    rc, text, _ = call(["ask"], "q", FAKE_RC="1",
+                       FAKE_ERR="prompt\nERROR: You've hit your usage limit. Try at 10 PM\n")
+    skipped(rc, text, "usage limit reached")
+    assert "10 PM" not in text
 
     # review, in a throwaway repo whose "origin/main" is a local branch
     repo = os.path.join(tmp, "repo")
