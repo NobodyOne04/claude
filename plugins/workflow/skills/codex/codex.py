@@ -26,7 +26,7 @@ for _f in ("apps", "plugins", "remote_plugin", "browser_use", "browser_use_exter
            "computer_use", "image_generation", "skill_mcp_dependency_install", "tool_suggest",
            "hooks"):  # hooks run on the host, outside the sandbox
     FIXED += ["--disable", _f]
-UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 SKIPPED, RERUN = 3, 4
 
 
@@ -96,16 +96,19 @@ def codex_exec(args, prompt, repo):
 
 def ask(a, prompt):
     thread, message = codex_exec([], prompt, a.repo)
-    if not UUID.match(str(thread)):
+    if not UUID.fullmatch(str(thread)):
         raise Skip("no valid thread id from codex")
     return f"thread: {thread}\n{message}"
 
 
 def resume(a, prompt):
-    if not UUID.match(a.thread_id):
+    if not UUID.fullmatch(a.thread_id):
         raise Skip("thread id is not a UUID")
     thread, message = codex_exec(["resume", a.thread_id], prompt, a.repo)
-    return f"thread: {thread or a.thread_id}\n{message}"
+    thread = thread or a.thread_id
+    if not UUID.fullmatch(str(thread)):
+        raise Skip("no valid thread id from codex")
+    return f"thread: {thread}\n{message}"
 
 
 def git(*args):
@@ -140,13 +143,14 @@ def review(a, _prompt):
         base = git("rev-parse", "--verify", a.base + "^{commit}")
     head = git("rev-parse", "HEAD")
     p = run(["codex", "review", "--base", base, *FIXED])
+    # before reading the result: a changed branch must rerun even if codex failed
+    if git("rev-parse", "HEAD") != head or git("status", "--porcelain", "--untracked-files=no"):
+        raise Rerun("the branch changed during the review; run it again")
     if p.returncode != 0:
         raise Skip(f"codex review exited {p.returncode}")
     text = p.stdout.decode("utf-8", "replace").strip()
     if not text:
         raise Skip("codex review printed nothing")
-    if git("rev-parse", "HEAD") != head or git("status", "--porcelain", "--untracked-files=no"):
-        raise Rerun("the branch changed during the review; run it again")
     return f"Codex review of {base[:12]}..{head[:12]}\n{text}"
 
 
@@ -269,7 +273,7 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
 
     rc, text, seen = call(["resume", tid], "q")
     assert rc == 0 and seen["argv"][:3] == ["exec", "resume", tid] and has_fixed(seen["argv"])
-    for bad_id in ("--last", "abc", tid + "x"):
+    for bad_id in ("--last", "abc", tid + "x", tid + "\n"):
         rc, text, seen = call(["resume", "--", bad_id], "q")
         assert rc == SKIPPED and seen is None and "not a UUID" in text, (bad_id, text)
 
@@ -278,6 +282,8 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
         assert text.count("\n") == 1 and len(text) <= 201, text
 
     skipped(*call(["ask"], "q", FAKE_RC="1")[:2], "exited 1")
+    skipped(*call(["resume", tid], "q", stdout=events.replace(tid, "not-a-uuid"))[:2],
+            "no valid thread id")
     skipped(*call(["resume", "--last"], "q")[:2], "bad arguments")
     skipped(*call(["nope"], "q")[:2], "bad arguments")
     rc, text, _ = call(["ask", "SENTINEL-PROMPT"], "q")
@@ -354,6 +360,8 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
                                 "'--allow-empty', '-m', 'moved'], check=True); sys.stdout.write("))
         rc, text, _ = call(["review", "--base", "main"], stdout="x")
         assert rc == RERUN and "changed during the review" in text, text
+        rc, text, _ = call(["review", "--base", "main"], stdout="", FAKE_RC="1")
+        assert rc == RERUN, ("a changed branch must rerun even when codex fails", text)
         # a tracked file edited (HEAD unchanged) while "codex" runs
         with open(fake, "w") as f:
             f.write(src.replace("sys.stdout.write(", "open('t.txt', 'a').write('y'); "
