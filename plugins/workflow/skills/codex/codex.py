@@ -51,10 +51,18 @@ def run(cmd, stdin=b"", cwd=None):
         raise Skip(f"{cmd[0]}: {e.strerror}")
 
 
+CODEX = None  # absolute path, set once by preflight()
+
+
 def preflight():
-    if not shutil.which("codex"):
+    """Find codex on absolute PATH entries only: a relative one (`.venv/bin`) would let the
+    repo under review supply the binary, which runs with Claude's rights."""
+    global CODEX
+    dirs = [d for d in os.environ.get("PATH", "").split(os.pathsep) if os.path.isabs(d)]
+    CODEX = shutil.which("codex", path=os.pathsep.join(dirs))
+    if not CODEX:
         raise Skip("codex not installed")
-    if run(["codex", "login", "status"]).returncode != 0:
+    if run([CODEX, "login", "status"]).returncode != 0:
         raise Skip("codex not logged in")
 
 
@@ -83,7 +91,7 @@ def codex_exec(args, prompt, repo):
     if repo and not os.path.isdir(repo):
         raise Skip("--repo is not a directory")
     # outside a repo Codex refuses to start without this; it grants nothing
-    cmd = ["codex", "exec", *args, "--json", *FIXED, "--skip-git-repo-check", "-"]
+    cmd = [CODEX, "exec", *args, "--json", *FIXED, "--skip-git-repo-check", "-"]
     p = run(cmd, prompt, cwd=repo)
     if p.returncode != 0:
         # fixed text: codex's stderr echoes the prompt and tool output, and this line goes in PRs
@@ -142,7 +150,7 @@ def review(a, _prompt):
     else:
         base = git("rev-parse", "--verify", a.base + "^{commit}")
     head = git("rev-parse", "HEAD")
-    p = run(["codex", "review", "--base", base, *FIXED])
+    p = run([CODEX, "review", "--base", base, *FIXED])
     # before reading the result: a changed branch must rerun even if codex failed
     if git("rev-parse", "HEAD") != head or git("status", "--porcelain", "--untracked-files=no"):
         raise Rerun("the branch changed during the review; run it again")
@@ -294,6 +302,9 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
     skipped(*call(["ask"], "q", FAKE_LOGIN_RC="1")[:2], "not logged in")
     skipped(*call(["ask", "--repo", os.path.join(tmp, "nope")], "q")[:2], "not a directory")
     skipped(*call(["ask"], "q", PATH="/nonexistent")[:2], "not installed")
+    # a relative PATH entry is ignored even when it holds a codex
+    rel = os.path.relpath(os.path.dirname(fake))
+    skipped(*call(["ask"], "q", PATH=rel)[:2], "not installed")
     long = skip_line(os.path.expanduser("~") + "/x\n" + "y" * 500)
     assert long.startswith("Codex: skipped (~/x y") and len(long) == 200, long
     odd = "\n".join(json.dumps(e) for e in [
