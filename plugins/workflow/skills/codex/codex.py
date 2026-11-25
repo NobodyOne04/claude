@@ -23,8 +23,10 @@ FIXED = ["-c", 'sandbox_mode="read-only"', "-c", 'approval_policy="never"',
 # Built-in features whose tools act outside the sandbox: `apps` alone exposes ChatGPT
 # connectors that deploy sites, change sharing and settings (seen on 0.172.0, 2026-11-25).
 for _f in ("apps", "plugins", "remote_plugin", "browser_use", "browser_use_external",
-           "computer_use", "image_generation", "skill_mcp_dependency_install", "tool_suggest"):
+           "computer_use", "image_generation", "skill_mcp_dependency_install", "tool_suggest",
+           "hooks"):  # hooks run on the host, outside the sandbox
     FIXED += ["--disable", _f]
+BRANCH = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._/-]*$")  # no options, no refspec ':'
 UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 SKIPPED = 3
 
@@ -37,12 +39,6 @@ def skip_line(text):
     """The whole `Codex: skipped (...)` line, at most 200 chars, home shortened to ~."""
     text = " ".join(str(text).split()).replace(os.path.expanduser("~"), "~") or "no reason given"
     return f"Codex: skipped ({text[:200 - len('Codex: skipped ()')]})"
-
-
-def last_line(stderr):
-    # codex echoes the whole session (prompt included) on stderr; the error is the last line
-    lines = [x for x in stderr.decode("utf-8", "replace").splitlines() if x.strip()]
-    return lines[-1] if lines else "no error output"
 
 
 def run(cmd, stdin=b"", cwd=None):
@@ -83,7 +79,8 @@ def codex_exec(args, prompt, repo):
     cmd = ["codex", "exec", *args, "--json", *FIXED, "--skip-git-repo-check", "-"]
     p = run(cmd, prompt, cwd=repo)
     if p.returncode != 0:
-        raise Skip(f"codex exited {p.returncode}: {last_line(p.stderr)}")
+        # fixed text: codex's stderr echoes the prompt and tool output, and this line goes in PRs
+        raise Skip(f"codex exited {p.returncode}")
     thread, message = last_message(p.stdout)
     if not message:
         raise Skip("no final message from codex")
@@ -120,24 +117,31 @@ def review(a, _prompt):
         raise Skip("uncommitted changes; commit them before the review")
     remote, _, branch = a.base.partition("/")
     if branch and remote in git("remote").split():
-        git("fetch", "--quiet", remote, branch)
+        if not BRANCH.match(branch) or ".." in branch:
+            raise Skip("base branch name not allowed")
+        git("fetch", "--quiet", remote, "refs/heads/" + branch)
         ref = "FETCH_HEAD"  # the tracking ref may not update under a narrow refspec
     else:
         ref = a.base
     base, head = git("rev-parse", "--verify", ref + "^{commit}"), git("rev-parse", "HEAD")
     p = run(["codex", "review", "--base", base, *FIXED])
     if p.returncode != 0:
-        raise Skip(f"codex review exited {p.returncode}: {last_line(p.stderr)}")
+        raise Skip(f"codex review exited {p.returncode}")
     text = p.stdout.decode("utf-8", "replace").strip()
     if not text:
         raise Skip("codex review printed nothing")
-    if git("rev-parse", "HEAD") != head:
-        raise Skip("HEAD moved during the review; run it again")
+    if git("rev-parse", "HEAD") != head or git("status", "--porcelain", "--untracked-files=no"):
+        raise Skip("the branch changed during the review; run it again")
     return f"Codex review of {base[:12]}..{head[:12]}\n{text}"
 
 
+class Parser(argparse.ArgumentParser):
+    def error(self, message):
+        raise Skip(f"bad arguments: {message}")
+
+
 def main(argv):
-    ap = argparse.ArgumentParser(prog="codex.py")
+    ap = Parser(prog="codex.py")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("ask")
     p.add_argument("--repo")
@@ -149,8 +153,8 @@ def main(argv):
     p = sub.add_parser("review")
     p.add_argument("--base", default="origin/main")
     p.set_defaults(fn=review, reads_prompt=False)
-    a = ap.parse_args(argv)
     try:
+        a = ap.parse_args(argv)
         prompt = sys.stdin.buffer.read() if a.reads_prompt else b""
         if a.reads_prompt and not prompt.strip():
             raise Skip("empty prompt on stdin")
@@ -216,7 +220,8 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
     want = ["-c", 'sandbox_mode="read-only"', "-c", 'approval_policy="never"',
             "-c", "mcp_servers={}"]
     for f in ("apps", "plugins", "remote_plugin", "browser_use", "browser_use_external",
-              "computer_use", "image_generation", "skill_mcp_dependency_install", "tool_suggest"):
+              "computer_use", "image_generation", "skill_mcp_dependency_install", "tool_suggest",
+              "hooks"):
         want += ["--disable", f]
 
     def has_fixed(argv):
@@ -249,6 +254,8 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
         assert text.count("\n") == 1 and len(text) <= 201, text
 
     skipped(*call(["ask"], "q", FAKE_RC="1")[:2], "exited 1")
+    skipped(*call(["resume", "--last"], "q")[:2], "bad arguments")
+    skipped(*call(["nope"], "q")[:2], "bad arguments")
     skipped(*call(["ask"], "q", stdout="")[:2], "no final message")
     skipped(*call(["ask"], "  \n")[:2], "empty prompt")
     skipped(*call(["ask"], "q", FAKE_LOGIN_RC="1")[:2], "not logged in")
@@ -259,8 +266,8 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
     rc, text, _ = call(["ask"], "q", stdout=events.replace(tid, "garbage"))
     skipped(rc, text, "no valid thread id")
     rc, text, _ = call(["ask"], "q", FAKE_RC="1", FAKE_ERR="user prompt secret\nreal error\n")
-    skipped(rc, text, "real error")
-    assert "secret" not in text
+    skipped(rc, text, "codex exited 1")
+    assert "secret" not in text and "real error" not in text
 
     # review, in a throwaway repo whose "origin/main" is a local branch
     repo = os.path.join(tmp, "repo")
@@ -284,6 +291,9 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
         rc, text, seen = call(["review", "--base", "origin/main"], stdout="ok\n")
         assert rc == 0 and seen["argv"][2] == sha("main"), text
         skipped(*call(["review", "--base", "origin/nope"])[:2], "git fetch failed")
+        for bad in ("origin/-x", "origin/a:refs/heads/b", "origin/a..b"):
+            skipped(*call(["review", "--base", bad])[:2], "not allowed")
+        assert sha("refs/heads/b") == "refs/heads/b"  # nothing was created
         skipped(*call(["review", "--base", "nope"])[:2], "rev-parse failed")
         with open(os.path.join(repo, "t.txt"), "w") as f:
             f.write("x")
@@ -300,7 +310,12 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
             f.write(src.replace("sys.stdout.write(", "import subprocess; subprocess.run(['git', "
                                 "'-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', "
                                 "'--allow-empty', '-m', 'moved']); sys.stdout.write("))
-        skipped(*call(["review", "--base", "main"], stdout="x")[:2], "HEAD moved")
+        skipped(*call(["review", "--base", "main"], stdout="x")[:2], "changed during the review")
+        # a tracked file edited (HEAD unchanged) while "codex" runs
+        with open(fake, "w") as f:
+            f.write(src.replace("sys.stdout.write(", "open('t.txt', 'a').write('y'); "
+                                "sys.stdout.write("))
+        skipped(*call(["review", "--base", "main"], stdout="x")[:2], "changed during the review")
     finally:
         os.chdir(cwd)
         shutil.rmtree(tmp)
