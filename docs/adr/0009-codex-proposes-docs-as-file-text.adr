@@ -20,37 +20,55 @@ builds the diff itself. After this, every Codex call this integration makes is r
   from the current file (or empty, for a new one) and Codex's text, with `difflib`.
 - **Path rules**, checked by the launcher against the repo resolved from `--repo` once, at
   the start:
-  - allowed: files ending in `.md`, case-insensitive;
+  - allowed (an allowlist, case-insensitive): `.md` files that are a `README.md` anywhere,
+    sit at the repo root, or are under `docs/`;
   - denied, compared after case-folding (this Mac's checkout is case-insensitive):
-    anything under `docs/adr/`; files named `SKILL.md`, `CLAUDE.md` or `AGENTS.md`, which
-    steer agents and so count as code in this repo; anything under a directory starting with
-    `.` (`.github/`, `.claude-plugin/`, …);
+    anything under `docs/adr/`; agent instruction files (`SKILL.md`, `CLAUDE.md`,
+    `CLAUDE.local.md`, `AGENTS.md`, `AGENTS.override.md`, `GEMINI.md`), which steer agents
+    and so count as code in this repo; anything under a `skills/`, `commands/` or `agents/`
+    directory (plugin prompts are `.md` files); anything under a directory starting with `.`
+    (`.github/`, `.claude-plugin/`, …); paths with control characters. An allowlist, not
+    just a denylist, because the commit security review showed that a list of names always
+    misses a kind of prompt file;
   - an existing file must be tracked under exactly that spelling (`git ls-files` returns the
     same name), so `readme.md` can't stand in for `README.md` on a case-insensitive disk;
   - each path must be relative, with no `..`, no empty or `.` parts, no backslash or NUL;
     listed once; and, after `realpath`, still inside the repo;
   - no part of the path may be a symlink. An existing target must be a regular file that is
-    not executable and is tracked by git (`git ls-files --error-unmatch`);
+    not executable and is tracked by git (`git --literal-pathspecs ls-files -z`);
   - allowed operations: change an existing file, or create a new `.md` file (new files get
     mode 644 when applied). Never delete, rename, or change a mode;
   - the JSON must parse, `files` must be non-empty, and `text` must be valid UTF-8 and at
     most 200 KB per file.
-- **Output**: pass → the launcher writes the patch to a private temp file (`mkstemp`, 0600)
-  and prints the repo root, the patch path, its SHA-256, and the full diff. Fail → each
-  reason on its own line, exit 2, nothing written anywhere. Codex unavailable → the skip line
-  from 0008.
+- **Output**: pass → the launcher writes a manifest to a private temp file (`mkstemp`,
+  0600): the repo root and, per file, its path, the SHA-256 of its current content (none for
+  a new file) and the new text. It prints the repo, the manifest path, the manifest's
+  SHA-256, the files, and a unified diff of each one. The diff is for reading only. Fail →
+  each reason on its own line, exit 2, nothing written anywhere. Codex unavailable → the skip
+  line from 0008.
 - **Claude's part**: show me the full diff (the 0006 rule to show Codex's output in full,
   redacting secrets, applies to the diff too). Then
-  `python3 -I codex.py docs-apply --repo DIR --sha256 <hex> <patch>`, which checks the
-  patch's SHA-256 against the one printed earlier, re-runs every path rule against the current tree, runs `git apply` in
-  that repo, and deletes the temp file. Then Claude commits and opens the PR (`github-flow`,
-  `commit-style`). Codex never commits or pushes (unchanged).
+  `python3 -I codex.py docs-apply --repo DIR --sha256 <hex> <manifest>`. It checks the
+  manifest's SHA-256, that its repo is this repo, every path rule against the current tree,
+  and that each file's content still matches the recorded SHA-256 (or is still absent).
+  Only when everything passes does it write each file's exact text, then it deletes the
+  manifest. Any failure → exit 2, nothing written. Then Claude commits and opens the PR
+  (`github-flow`, `commit-style`). Codex never commits or pushes (unchanged).
+- **Why a manifest, not `git apply`** (changed during implementation, after Codex's review):
+  a patch handed to `git apply` can carry operations the path check never saw (deletes,
+  other targets, names with control characters), and it applies cleanly even when the file
+  changed outside its hunks. Writing the checked text directly, guarded by the recorded
+  preimage hash, applies exactly what was shown and nothing else.
 - **Self-test**: a clean edit and a new `.md` file both pass. Each of these fails with the
   right reason: `.py`, `docs/x.sh`, `DOCS/ADR/0001.adr`, `docs/adr/README.md`, `SKILL.md`
-  anywhere, `CLAUDE.md`, `.github/x.md`, `../x.md`, an absolute path, a path through a
+  anywhere, `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.override.md`, `GEMINI.md`, `sub/x.md`,
+  `plugins/p/commands/x.md`, a `README.md` under `skills/`, `.github/x.md`, control
+  characters in a path, a lone surrogate in the text, `../x.md`, an absolute path, a path through a
   symlinked dir, a symlink target, an executable target, an untracked existing file, a
   duplicate path, an empty list, invalid JSON, prose around the JSON. `docs-apply` refuses a
-  changed patch (SHA mismatch) and a tree that changed after the check. All run in a
+  changed manifest (SHA mismatch), another repo, and a file changed after the check, with
+  no partial writes. CRLF line endings, U+2028 in text, a `README.md` in a subfolder, and a
+  non-ASCII tracked name (`café.md`) all work. All run in a
   throwaway git repo.
 - **Files**: `docs` and `docs-apply` in `codex.py` with their tests; the `codex` skill's
   `## Docs` rewritten; workflow minor bump; CHANGELOG. This replaces only 0006's
@@ -58,18 +76,22 @@ builds the diff itself. After this, every Codex call this integration makes is r
 - **Consequences**: no writable Codex session anywhere in this integration. Docs become
   "file text → launcher checks the paths and builds the diff → I see it → Claude applies".
   Cost: Codex can't run a docs build or link checker while writing (it never had to), and
-  the agent-instruction files (`SKILL.md`, `CLAUDE.md`, `AGENTS.md`) are out of Codex's
-  reach. Claude writes those. Large jobs go one file per call to stay within output limits.
+  agent instruction files and plugin prompts are out of Codex's reach, and so are
+  `.md` files outside `README.md`, the repo root and `docs/`. Claude writes those. Large jobs go one file per call to stay within output limits.
 
 ## Technologies and alternatives
 - Involved: launcher from 0008, Python 3 stdlib (`json`, `difflib`, `hashlib`, `tempfile`),
-  `git apply`.
+  `git ls-files`.
 - Alternatives:
   - Keep the writable worktree plus diff check (status quo): it only checks after the fact.
+  - The launcher builds a patch and runs `git apply` (the first implementation): see "Why a
+    manifest" above.
   - Codex returns a unified diff, and the launcher validates it before `git apply`: the
     validator would have to understand every kind of Git patch metadata (renames, copies,
     modes, binary), a much larger attack surface than path plus text.
-  - Allow everything under `docs/`: it can hold scripts and build config, and that breaks
+  - Allow every file under `docs/`: it can hold scripts and build config, and that breaks
     "Codex never edits code".
+  - Any `.md` file minus a denylist of names (the first draft): misses plugin prompts in
+    `commands/` and `agents/`, and whatever the next tool names its instruction file.
   - Codex writes nothing, and Claude writes docs from Codex's notes: this drops the docs role
     0006 gave Codex.

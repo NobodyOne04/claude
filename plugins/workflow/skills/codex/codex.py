@@ -5,7 +5,7 @@
   codex.py resume THREAD_ID [--repo DIR]  prompt on stdin; continue a thread
   codex.py review [--base REF]         from the repo root; review the branch against REF
   codex.py docs --repo DIR             prompt on stdin; Codex proposes .md text (ADR 0009)
-  codex.py docs-apply --repo DIR --sha256 HEX PATCH   apply a patch `docs` produced
+  codex.py docs-apply --repo DIR --sha256 HEX MANIFEST   write what `docs` checked
   codex.py --test                      self-check with a fake codex
 
 Success prints `thread: <id>` (or the review header), then Codex's final message.
@@ -224,12 +224,17 @@ DOCS_SCHEMA = {
 DOCS_INSTRUCTION = """You are proposing documentation changes. You cannot write files.
 Your final message must be exactly one JSON object and nothing else:
 {"files": [{"path": "<path relative to the repo root>", "text": "<complete new content>"}]}
-Only .md files. Never files under docs/adr/, never SKILL.md, CLAUDE.md or AGENTS.md, never
-anything under a directory starting with a dot. Give each file's complete new text.
+Only README.md files, .md files at the repo root, and .md files under docs/. Never
+docs/adr/, never agent instruction files (SKILL.md, CLAUDE.md, AGENTS.md, GEMINI.md and
+their variants), never anything under skills/, commands/, agents/ or a dot directory.
+Give each file's complete new text.
 
 The task:
 """
-AGENT_FILES = {"skill.md", "claude.md", "agents.md"}  # they steer agents: code, in this repo
+# they steer agents, so in this repo they are code (overrides and local variants included)
+AGENT_FILES = {"skill.md", "claude.md", "claude.local.md", "agents.md", "agents.override.md",
+               "gemini.md"}
+INSTRUCTION_DIRS = {"skills", "commands", "agents"}  # plugin prompts are .md files too
 MAX_TEXT = 200_000
 
 
@@ -239,12 +244,22 @@ def repo_root(repo):
     return os.path.realpath(git("rev-parse", "--show-toplevel", cwd=repo))
 
 
+def tracked_as(root, path):
+    """The index's exact spelling of `path`, or None: literal, NUL-delimited, unquoted."""
+    p = run(["git", "--literal-pathspecs", "-c", "core.hooksPath=/dev/null",
+             "-c", "core.fsmonitor=false", "ls-files", "-z", "--", path], cwd=root)
+    names = p.stdout.decode("utf-8", "surrogateescape").split("\0")
+    return names[0] if p.returncode == 0 and names[0] else None
+
+
 def path_problem(root, path):
     """Why `path` may not be written by Codex, or None. Rules from ADR 0009."""
     if not isinstance(path, str) or not path:
         return "path is not a non-empty string"
-    if "\\" in path or "\0" in path or os.path.isabs(path):
-        return "path must be relative, without backslashes or NUL"
+    if any(ord(c) < 0x20 or ord(c) == 0x7f for c in path) or "\\" in path:
+        return "path has a control character or backslash"
+    if os.path.isabs(path):
+        return "path must be relative"
     parts = path.split("/")
     if any(x in ("", ".", "..") for x in parts):
         return "path has an empty, '.' or '..' part"
@@ -254,7 +269,7 @@ def path_problem(root, path):
     if low.startswith("docs/adr/"):
         return "docs/adr/ stays with the owner and Claude"
     if parts[-1].casefold() in AGENT_FILES:
-        return "SKILL.md, CLAUDE.md and AGENTS.md steer agents: Claude writes those"
+        return "agent instruction files (SKILL.md, CLAUDE.md, AGENTS.md...): Claude writes those"
     if any(x.startswith(".") for x in parts):
         return "nothing under a dot directory"
     full = root
@@ -268,12 +283,14 @@ def path_problem(root, path):
         st = os.lstat(full)
         if not stat.S_ISREG(st.st_mode) or st.st_mode & 0o111:
             return "existing target is not a plain, non-executable file"
-        try:
-            tracked = git("ls-files", "--", path, cwd=root)
-        except Skip:
-            tracked = ""
-        if tracked != path:  # also catches readme.md standing in for README.md
+        if tracked_as(root, path) != path:  # also catches readme.md standing in for README.md
             return "existing file is not tracked by git under exactly this name"
+    # allowlist last: docs live in README.md files, root .md files and docs/
+    low_parts = [x.casefold() for x in parts]
+    if INSTRUCTION_DIRS.intersection(low_parts[:-1]):
+        return "nothing under skills/, commands/ or agents/: those .md files are prompts"
+    if not (len(parts) == 1 or low_parts[0] == "docs" or low_parts[-1] == "readme.md"):
+        return "docs only: README.md files, .md files at the repo root, and docs/"
     return None
 
 
@@ -281,16 +298,30 @@ def label(path):
     return repr(path)[:80]  # Codex-supplied text: bounded, quoted
 
 
+def lf_lines(text):
+    # LF only, endings kept: splitlines() would also split on U+2028 and eat CRs
+    parts = text.split("\n")
+    return [x + "\n" for x in parts[:-1]] + ([parts[-1]] if parts[-1] else [])
+
+
 def unified(path, old, new):
-    """A git-applyable diff for one file, built here: Codex writes no patch metadata."""
-    out = [f"diff --git a/{path} b/{path}\n"]
-    if old is None:
-        out.append("new file mode 100644\n")
-    a_name = "/dev/null" if old is None else f"a/{path}"
-    for line in difflib.unified_diff((old or "").splitlines(keepends=True),
-                                     new.splitlines(keepends=True), a_name, f"b/{path}"):
+    """The diff shown to the owner. Display only: docs-apply writes the text itself."""
+    out = [f"--- {'/dev/null' if old is None else 'a/' + path}\n", f"+++ b/{path}\n"]
+    for line in list(difflib.unified_diff(lf_lines(old or ""), lf_lines(new), n=3))[2:]:
         out.append(line if line.endswith("\n") else line + "\n\\ No newline at end of file\n")
     return "".join(out)
+
+
+def read_text(full):
+    """Current UTF-8 text of a file, line endings untouched; None if it doesn't exist."""
+    if not os.path.exists(full):
+        return None
+    with open(full, "rb") as f:
+        return f.read().decode("utf-8")  # UnicodeDecodeError: caller rejects
+
+
+def sha(text):
+    return None if text is None else hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def docs(a, prompt):
@@ -308,53 +339,76 @@ def docs(a, prompt):
         assert isinstance(files, list) and files
     except (ValueError, KeyError, TypeError, AssertionError):
         raise Rejected(["the reply is not one JSON object with a non-empty files list"])
-    problems, seen, patch = [], set(), []
+    problems, seen, plan, diff = [], set(), [], []
     for f in files:
         path, text = (f.get("path"), f.get("text")) if isinstance(f, dict) else (None, None)
         why = path_problem(root, path)
         if not why and path.casefold() in seen:
             why = "listed twice"
-        if not why and (not isinstance(text, str) or len(text.encode()) > MAX_TEXT):
-            why = f"text is not a string of at most {MAX_TEXT} bytes"
+        if not why:
+            try:
+                if not isinstance(text, str) or len(text.encode("utf-8")) > MAX_TEXT:
+                    why = f"text is not a string of at most {MAX_TEXT} bytes"
+            except UnicodeEncodeError:
+                why = "text is not valid UTF-8"
+        if not why:
+            try:
+                old = read_text(os.path.join(root, path))
+            except UnicodeDecodeError:
+                why = "existing file is not UTF-8"
         if why:
             problems.append(f"{label(path)}: {why}")
             continue
         seen.add(path.casefold())
-        full = os.path.join(root, path)
-        old = open(full, encoding="utf-8").read() if os.path.exists(full) else None
         if old != text:
-            patch.append(unified(path, old, text))
+            plan.append({"path": path, "old_sha256": sha(old), "text": text})
+            diff.append(unified(path, old, text))
     if problems:
         raise Rejected(problems)
-    if not patch:
+    if not plan:
         raise Rejected(["no file would change"])
-    body = "".join(patch).encode()
-    git("apply", "--check", "-", cwd=root, stdin=body)
-    fd, out = tempfile.mkstemp(prefix="codex-docs-", suffix=".patch")  # 0600
+    body = json.dumps({"repo": root, "files": plan}, sort_keys=True).encode()
+    fd, out = tempfile.mkstemp(prefix="codex-docs-", suffix=".json")  # 0600
     with os.fdopen(fd, "wb") as f:
         f.write(body)
-    return (f"repo: {root}\npatch: {out}\nsha256: {hashlib.sha256(body).hexdigest()}\n"
-            f"{git('apply', '--stat', '-', cwd=root, stdin=body)}\n\n{body.decode()}")
+    return (f"repo: {root}\nmanifest: {out}\nsha256: {hashlib.sha256(body).hexdigest()}\n"
+            + "".join(f"{'new ' if p['old_sha256'] is None else ''}{p['path']}\n" for p in plan)
+            + "\n" + "".join(diff))
 
 
 def docs_apply(a, _prompt):
+    """Write the manifest's text, only if nothing changed since `docs` checked it."""
     root = repo_root(a.repo)
     try:
-        body = open(a.patch, "rb").read()
+        with open(a.manifest, "rb") as f:
+            body = f.read()
     except OSError:
-        raise Skip("patch file not readable")
+        raise Skip("manifest not readable")
     if hashlib.sha256(body).hexdigest() != a.sha256:
-        raise Rejected(["patch changed since it was checked (SHA-256 mismatch)"])
-    # from our own `diff --git a/P b/P` headers (content lines start with ' ', '+' or '-')
-    heads = [ln[len("diff --git a/"):] for ln in body.decode("utf-8", "replace").split("\n")
-             if ln.startswith("diff --git a/")]
-    paths = [h[:(len(h) - 3) // 2] for h in heads]
-    problems = [f"{label(p)}: {why}" for p in paths if (why := path_problem(root, p))]
-    if problems or not paths:
-        raise Rejected(problems or ["patch names no file"])
-    git("apply", "-", cwd=root, stdin=body)
-    os.remove(a.patch)
-    return f"applied to {root}: " + ", ".join(paths)
+        raise Rejected(["manifest changed since it was checked (SHA-256 mismatch)"])
+    m = json.loads(body)
+    if m["repo"] != root:
+        raise Rejected(["manifest is for another repo"])
+    problems = []
+    for p in m["files"]:
+        why = path_problem(root, p["path"])
+        if not why:
+            try:
+                if sha(read_text(os.path.join(root, p["path"]))) != p["old_sha256"]:
+                    why = "file changed since the proposal; run docs again"
+            except UnicodeDecodeError:
+                why = "file changed since the proposal; run docs again"
+        if why:
+            problems.append(f"{label(p['path'])}: {why}")
+    if problems:
+        raise Rejected(problems)
+    for p in m["files"]:  # every check passed before the first write
+        full = os.path.join(root, p["path"])
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w", encoding="utf-8", newline="") as f:  # exact text, no translation
+            f.write(p["text"])
+    os.remove(a.manifest)
+    return f"applied to {root}: " + ", ".join(p["path"] for p in m["files"])
 
 
 class Parser(argparse.ArgumentParser):
@@ -381,7 +435,7 @@ def main(argv):
     p = sub.add_parser("docs-apply")
     p.add_argument("--repo", required=True)
     p.add_argument("--sha256", required=True)
-    p.add_argument("patch")
+    p.add_argument("manifest")
     p.set_defaults(fn=docs_apply, reads_prompt=False, needs_codex=False)
     try:
         a = ap.parse_args(argv)
@@ -639,23 +693,39 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
             return events.replace(json.dumps("fin\u2028al", ensure_ascii=False)[1:-1],
                                   msg.replace("\\", "\\\\").replace('"', '\\"'))
 
+        for name, text in {"café.md": "c\n", "crlf.md": "a\r\nb\r\n"}.items():
+            with open(os.path.join(d, name), "w", newline="") as f:
+                f.write(text)
+        subprocess.run(gd + ["add", "-A", "--", "café.md", "crlf.md"], check=True)
+        subprocess.run(gd + ["commit", "-q", "-m", "more"], check=True)
+
+        def manifest_of(text):
+            return (text.split("manifest: ")[1].split("\n")[0],
+                    text.split("sha256: ")[1].split("\n")[0])
+
         rc, text, seen = call(["docs", "--repo", d], "update the readme",
-                              stdout=proposal(("README.md", "new\n"), ("docs/new.md", "hi")))
+                              stdout=proposal(("README.md", "new\n"), ("docs/new.md", "hi"),
+                                              ("plugins/p/README.md", "p\n"),
+                                              ("café.md", "c2\n"),
+                                              ("crlf.md", "a\r\nb\r\nc\u2028d\r\n")))
         assert rc == 0, text
         assert has_fixed(seen["argv"]) and "--output-schema" in seen["argv"], seen["argv"]
         assert seen["stdin"].endswith("update the readme") and "JSON" in seen["stdin"]
-        assert "-old\n+new" in text and "new file mode 100644" in text, text
-        assert "\\ No newline at end of file" in text, text
-        patch = text.split("patch: ")[1].split("\n")[0]
-        digest = text.split("sha256: ")[1].split("\n")[0]
-        assert stat.S_IMODE(os.stat(patch).st_mode) == 0o600
+        assert "-old\n+new" in text and "new docs/new.md" in text, text
+        assert text.count("\\ No newline at end of file") == 1, text  # only for "hi"
+        man, digest = manifest_of(text)
+        assert stat.S_IMODE(os.stat(man).st_mode) == 0o600
         assert open(os.path.join(d, "README.md")).read() == "old\n", "docs must write nothing"
 
-        bad = {"x.py": "only .md", "docs/x.sh": "only .md",
+        bad = {"x.py": "only .md", "docs/x.sh": "only .md", "GEMINI.md": "agent instruction",
+               "sub/x.md": "docs only", "plugins/p/commands/x.md": "are prompts",
+               "plugins/p/skills/s/README.md": "are prompts",
                "DOCS/ADR/0002.md": "docs/adr/", "docs/adr/README.md": "docs/adr/",
-               "plugins/s/SKILL.md": "steer agents", "CLAUDE.md": "steer agents",
-               "sub/agents.MD": "steer agents", ".github/x.md": "dot directory",
-               "../x.md": "'..'", "/abs.md": "relative", "a\\b.md": "relative",
+               "plugins/s/SKILL.md": "agent instruction", "CLAUDE.md": "agent instruction",
+               "sub/agents.MD": "agent instruction", "AGENTS.override.md": "agent instruction",
+               "CLAUDE.local.md": "agent instruction", ".github/x.md": "dot directory",
+               "../x.md": "'..'", "/abs.md": "relative", "a\\b.md": "control character",
+               "a\nb.md": "control character", "a\tb.md": "control character",
                "linkdir/inner.md": "symlink", "alias.md": "symlink",
                "run.md": "non-executable", "untracked.md": "not tracked",
                "readme.md": "exactly this name"}
@@ -664,8 +734,11 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
                 continue  # case-sensitive disk: readme.md is simply a new file there
             rc, text, _ = call(["docs", "--repo", d], "t", stdout=proposal((path, "x\n")))
             assert rc == REJECTED and why in text, (path, text)
+        lone = events.replace("fin\u2028al",
+                              '{\\"files\\": [{\\"path\\": \\"z.md\\", \\"text\\": \\"\\\\ud800\\"}]}')
         for reply, why in ((proposal(("a.md", "1"), ("A.md", "2")), "listed twice"),
                            (proposal(), "non-empty files list"),
+                           (lone, "not valid UTF-8"),
                            (events.replace("fin\u2028al", "not json"), "not one JSON"),
                            (events.replace("fin\u2028al", 'Here: {\\"files\\": []}'),
                             "not one JSON"),
@@ -673,25 +746,31 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
             rc, text, _ = call(["docs", "--repo", d], "t", stdout=reply)
             assert rc == REJECTED and why in text, (why, text)
 
-        # docs-apply: refuses a changed patch, re-checks the tree, then applies
-        with open(patch, "ab") as f:
+        # docs-apply: refuses a changed manifest, another repo, a changed tree
+        with open(man, "ab") as f:
             f.write(b" ")
-        rc, text, _ = call(["docs-apply", "--repo", d, "--sha256", digest, patch])
+        rc, text, _ = call(["docs-apply", "--repo", d, "--sha256", digest, man])
         assert rc == REJECTED and "SHA-256" in text, text
+        os.remove(man)
         rc, text, _ = call(["docs", "--repo", d], "t",
-                           stdout=proposal(("README.md", "new\n"), ("docs/new.md", "hi")))
-        patch = text.split("patch: ")[1].split("\n")[0]
-        digest = text.split("sha256: ")[1].split("\n")[0]
-        os.chmod(os.path.join(d, "README.md"), 0o755)  # the tree changed after the check
-        rc, text, _ = call(["docs-apply", "--repo", d, "--sha256", digest, patch])
-        assert rc == REJECTED and "non-executable" in text, text
-        os.chmod(os.path.join(d, "README.md"), 0o644)
-        rc, text, _ = call(["docs-apply", "--repo", d, "--sha256", digest, patch],
+                           stdout=proposal(("README.md", "new\n"), ("docs/new.md", "hi"),
+                                           ("crlf.md", "a\r\nb\r\nc\u2028d\r\n")))
+        man, digest = manifest_of(text)
+        rc, text, _ = call(["docs-apply", "--repo", repo, "--sha256", digest, man])
+        assert rc == REJECTED and "another repo" in text, text
+        with open(os.path.join(d, "README.md"), "a") as f:
+            f.write("edited meanwhile\n")
+        rc, text, _ = call(["docs-apply", "--repo", d, "--sha256", digest, man])
+        assert rc == REJECTED and "changed since the proposal" in text, text
+        assert not os.path.exists(os.path.join(d, "docs/new.md")), "no partial writes"
+        subprocess.run(gd + ["checkout", "--", "README.md"], check=True)
+        rc, text, _ = call(["docs-apply", "--repo", d, "--sha256", digest, man],
                            PATH="/usr/bin")  # git, and no codex: docs-apply needs none
         assert rc == 0, text
         assert open(os.path.join(d, "README.md")).read() == "new\n"
         assert open(os.path.join(d, "docs/new.md")).read() == "hi"
-        assert not os.path.exists(patch)
+        assert open(os.path.join(d, "crlf.md"), newline="").read() == "a\r\nb\r\nc\u2028d\r\n"
+        assert not os.path.exists(man)
     finally:
         os.chdir(cwd)
         shutil.rmtree(tmp)

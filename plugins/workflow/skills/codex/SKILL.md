@@ -37,7 +37,7 @@ any directory. Never call `codex` directly. No Codex call can write: docs come b
 | Continue that thread | `python3 -I <this skill's dir>/codex.py resume <thread_id> --repo <repo root>` |
 | Review the branch | from the repo root: `python3 -I <this skill's dir>/codex.py review` (`--base REF`, default `origin/main`) |
 | Propose docs | `python3 -I <this skill's dir>/codex.py docs --repo <repo root>` |
-| Apply them | `python3 -I <this skill's dir>/codex.py docs-apply --repo <repo root> --sha256 <hex> <patch>` |
+| Apply them | `python3 -I <this skill's dir>/codex.py docs-apply --repo <repo root> --sha256 <hex> <manifest>` |
 
 - The prompt goes on stdin, as a quoted heredoc with this exact delimiter, which never
   appears inside a prompt:
@@ -60,15 +60,18 @@ any directory. Never call `codex` directly. No Codex call can write: docs come b
 
 ## Docs
 - `docs` sends the task to a read-only Codex, which replies with each file's full new text.
-  The launcher checks every path (only `.md`; never `docs/adr/`, `SKILL.md`, `CLAUDE.md`,
-  `AGENTS.md`, dot directories, symlinks, executables or untracked files) and builds the diff
-  itself. Nothing is written yet.
-- Output: `repo:`, `patch:`, `sha256:`, the stat, then the full diff. Show me the full diff
-  (the redaction rule below applies), then run `docs-apply` with that patch and SHA-256: it
-  refuses a changed patch, re-checks the paths, applies, and deletes the patch.
+  The launcher checks every path and builds the diff itself; nothing is written yet. Codex
+  may write only `README.md` files, `.md` files at the repo root, and `.md` under `docs/`;
+  never `docs/adr/`, agent instruction files (`SKILL.md`, `CLAUDE.md`, `AGENTS.md`, …),
+  anything under `skills/`, `commands/`, `agents/` or a dot directory, symlinks,
+  executables or untracked files.
+- Output: `repo:`, `manifest:`, `sha256:`, the files, then the full diff. Show me the full
+  diff (the redaction rule below applies), then run `docs-apply` with that manifest and
+  SHA-256. It refuses a changed manifest or a file changed meanwhile, re-checks the paths,
+  writes the exact text, and deletes the manifest.
 - Exit 2, `Codex docs: rejected, nothing written`, then one line per reason: tell me, and fix
-  the prompt or write those files yourself. `SKILL.md`, `CLAUDE.md` and `AGENTS.md` are always
-  yours to write.
+  the prompt, run `docs` again (a file changed meanwhile), or write those files yourself.
+  Agent instruction files and plugin prompts are always yours to write.
 - Review the applied text like your own, then commit and open the PR (`github-flow`,
   `commit-style`). Codex never commits or pushes.
 

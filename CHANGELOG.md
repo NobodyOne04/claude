@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Added
-- workflow 0.13.0: Codex proposes docs as file text from a read-only session; `codex.py docs` checks the paths and builds the diff, `docs-apply` applies it after a SHA-256 and path re-check. No Codex call can write any more (ADR 0009)
+- workflow 0.13.0: Codex proposes docs as file text from a read-only session; `codex.py docs` checks the paths (README.md, root .md, docs/; never ADRs, agent instruction files or plugin prompts) and shows the diff, `docs-apply` writes the checked text only if the manifest, paths and files are unchanged. No Codex call can write any more (ADR 0009)
 - workflow 0.12.0: `codex.py` launcher, the only way Claude calls Codex read-only (ask, resume, review): fixed sandbox, no approvals, no MCP servers, ChatGPT connectors and plugins disabled, prompt on stdin, self-tested in `make check` (ADR 0008)
 
 ### Fixed
