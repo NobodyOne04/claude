@@ -66,9 +66,11 @@ def last_message(stdout):
         if not isinstance(ev, dict):
             continue
         thread = thread or ev.get("thread_id")
-        item = ev.get("item") or {}
-        if ev.get("type") == "item.completed" and item.get("type") == "agent_message":
-            message = item.get("text")
+        item = ev.get("item")
+        if ev.get("type") == "item.completed" and isinstance(item, dict) \
+                and item.get("type") == "agent_message":
+            text = item.get("text")
+            message = text if isinstance(text, str) and text.strip() else message
     return thread, message
 
 
@@ -179,6 +181,11 @@ def self_test():
     import io
     import tempfile
 
+    # the fixture's git must not touch the caller's repo (GIT_DIR, GIT_INDEX_FILE...) or use
+    # its global config (commit signing, hooks)
+    for k in [k for k in os.environ if k.startswith("GIT_")]:
+        del os.environ[k]
+    os.environ.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
     tmp = tempfile.mkdtemp()
     log, out = os.path.join(tmp, "log.json"), os.path.join(tmp, "out")
     fake = os.path.join(tmp, "bin", "codex")
@@ -275,6 +282,12 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
     skipped(*call(["ask"], "q", PATH="/nonexistent")[:2], "not installed")
     long = skip_line(os.path.expanduser("~") + "/x\n" + "y" * 500)
     assert long.startswith("Codex: skipped (~/x y") and len(long) == 200, long
+    odd = "\n".join(json.dumps(e) for e in [
+        {"type": "thread.started", "thread_id": tid},
+        {"type": "item.completed", "item": "a string"},
+        {"type": "item.completed", "item": {"type": "agent_message", "text": {"x": 1}}},
+        {"type": "item.completed", "item": {"type": "agent_message", "text": "  "}}, [1]])
+    skipped(*call(["ask"], "q", stdout=odd)[:2], "no final message")
     rc, text, _ = call(["ask"], "q", stdout=events.replace(tid, "garbage"))
     skipped(rc, text, "no valid thread id")
     rc, text, _ = call(["ask"], "q", FAKE_RC="1", FAKE_ERR="user prompt secret\nreal error\n")
@@ -326,7 +339,7 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
         with open(fake, "w") as f:
             f.write(src.replace("sys.stdout.write(", "import subprocess; subprocess.run(['git', "
                                 "'-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', "
-                                "'--allow-empty', '-m', 'moved']); sys.stdout.write("))
+                                "'--allow-empty', '-m', 'moved'], check=True); sys.stdout.write("))
         skipped(*call(["review", "--base", "main"], stdout="x")[:2], "changed during the review")
         # a tracked file edited (HEAD unchanged) while "codex" runs
         with open(fake, "w") as f:
