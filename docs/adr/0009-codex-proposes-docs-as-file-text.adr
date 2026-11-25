@@ -1,0 +1,75 @@
+# 0009. Codex proposes docs as file text from a read-only session
+
+- Status: Accepted
+- Date: 2026-11-25
+
+For docs, Codex returns the new text of each file in its reply instead of writing files.
+The launcher from [0008](0008-codex-calls-go-through-one-launcher.adr) checks the paths and
+builds the diff itself. After this, every Codex call this integration makes is read-only. Approved by the owner on 2026-11-25.
+
+## Technical details
+- **Problem**: [0006](0006-codex-read-only-second-agent.adr) gives Codex `workspace-write`
+  in its own worktree for docs, and Claude rejects the diff if it touches anything but docs.
+  Inside that worktree Codex can still write and run anything before the check. This is the
+  last writable path in the integration.
+- **Decision**: `codex.py docs --repo DIR`. It makes the same read-only call as `ask` (same
+  fixed flags) and wraps the prompt in a fixed instruction: the final message is one JSON
+  object, `{"files": [{"path": "<repo-relative>", "text": "<complete new content>"}]}`,
+  nothing else, also enforced with `codex exec --output-schema`. Codex never writes Git patch
+  metadata. The launcher builds the unified diff
+  from the current file (or empty, for a new one) and Codex's text, with `difflib`.
+- **Path rules**, checked by the launcher against the repo resolved from `--repo` once, at
+  the start:
+  - allowed: files ending in `.md`, case-insensitive;
+  - denied, compared after case-folding (this Mac's checkout is case-insensitive):
+    anything under `docs/adr/`; files named `SKILL.md`, `CLAUDE.md` or `AGENTS.md`, which
+    steer agents and so count as code in this repo; anything under a directory starting with
+    `.` (`.github/`, `.claude-plugin/`, …);
+  - an existing file must be tracked under exactly that spelling (`git ls-files` returns the
+    same name), so `readme.md` can't stand in for `README.md` on a case-insensitive disk;
+  - each path must be relative, with no `..`, no empty or `.` parts, no backslash or NUL;
+    listed once; and, after `realpath`, still inside the repo;
+  - no part of the path may be a symlink. An existing target must be a regular file that is
+    not executable and is tracked by git (`git ls-files --error-unmatch`);
+  - allowed operations: change an existing file, or create a new `.md` file (new files get
+    mode 644 when applied). Never delete, rename, or change a mode;
+  - the JSON must parse, `files` must be non-empty, and `text` must be valid UTF-8 and at
+    most 200 KB per file.
+- **Output**: pass → the launcher writes the patch to a private temp file (`mkstemp`, 0600)
+  and prints the repo root, the patch path, its SHA-256, and the full diff. Fail → each
+  reason on its own line, exit 2, nothing written anywhere. Codex unavailable → the skip line
+  from 0008.
+- **Claude's part**: show me the full diff (the 0006 rule to show Codex's output in full,
+  redacting secrets, applies to the diff too). Then
+  `python3 -I codex.py docs-apply --repo DIR --sha256 <hex> <patch>`, which checks the
+  patch's SHA-256 against the one printed earlier, re-runs every path rule against the current tree, runs `git apply` in
+  that repo, and deletes the temp file. Then Claude commits and opens the PR (`github-flow`,
+  `commit-style`). Codex never commits or pushes (unchanged).
+- **Self-test**: a clean edit and a new `.md` file both pass. Each of these fails with the
+  right reason: `.py`, `docs/x.sh`, `DOCS/ADR/0001.adr`, `docs/adr/README.md`, `SKILL.md`
+  anywhere, `CLAUDE.md`, `.github/x.md`, `../x.md`, an absolute path, a path through a
+  symlinked dir, a symlink target, an executable target, an untracked existing file, a
+  duplicate path, an empty list, invalid JSON, prose around the JSON. `docs-apply` refuses a
+  changed patch (SHA mismatch) and a tree that changed after the check. All run in a
+  throwaway git repo.
+- **Files**: `docs` and `docs-apply` in `codex.py` with their tests; the `codex` skill's
+  `## Docs` rewritten; workflow minor bump; CHANGELOG. This replaces only 0006's
+  "Write docs" bullet (writable worktree plus diff check); the rest of 0006 stands.
+- **Consequences**: no writable Codex session anywhere in this integration. Docs become
+  "file text → launcher checks the paths and builds the diff → I see it → Claude applies".
+  Cost: Codex can't run a docs build or link checker while writing (it never had to), and
+  the agent-instruction files (`SKILL.md`, `CLAUDE.md`, `AGENTS.md`) are out of Codex's
+  reach. Claude writes those. Large jobs go one file per call to stay within output limits.
+
+## Technologies and alternatives
+- Involved: launcher from 0008, Python 3 stdlib (`json`, `difflib`, `hashlib`, `tempfile`),
+  `git apply`.
+- Alternatives:
+  - Keep the writable worktree plus diff check (status quo): it only checks after the fact.
+  - Codex returns a unified diff, and the launcher validates it before `git apply`: the
+    validator would have to understand every kind of Git patch metadata (renames, copies,
+    modes, binary), a much larger attack surface than path plus text.
+  - Allow everything under `docs/`: it can hold scripts and build config, and that breaks
+    "Codex never edits code".
+  - Codex writes nothing, and Claude writes docs from Codex's notes: this drops the docs role
+    0006 gave Codex.

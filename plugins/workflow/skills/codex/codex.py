@@ -4,18 +4,24 @@
   codex.py ask [--repo DIR]            prompt on stdin; new thread
   codex.py resume THREAD_ID [--repo DIR]  prompt on stdin; continue a thread
   codex.py review [--base REF]         from the repo root; review the branch against REF
+  codex.py docs --repo DIR             prompt on stdin; Codex proposes .md text (ADR 0009)
+  codex.py docs-apply --repo DIR --sha256 HEX PATCH   apply a patch `docs` produced
   codex.py --test                      self-check with a fake codex
 
 Success prints `thread: <id>` (or the review header), then Codex's final message.
 Any failure prints only `Codex: skipped (<reason>)` and exits 3.
 """
 import argparse
+import difflib
+import hashlib
 import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 
 # Not overridable: the read-only guarantee lives here, not in the caller's command line.
 FIXED = ["-c", 'sandbox_mode="read-only"', "-c", 'approval_policy="never"',
@@ -27,7 +33,7 @@ for _f in ("apps", "plugins", "remote_plugin", "browser_use", "browser_use_exter
            "hooks"):  # hooks run on the host, outside the sandbox
     FIXED += ["--disable", _f]
 UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
-SKIPPED, RERUN = 3, 4
+SKIPPED, RERUN, REJECTED = 3, 4, 2
 
 
 class Skip(Exception):
@@ -36,6 +42,10 @@ class Skip(Exception):
 
 class Rerun(Exception):
     """The review no longer matches the branch: fix what it says, then run it again."""
+
+
+class Rejected(Exception):
+    """Codex's docs proposal broke a rule: nothing was written."""
 
 
 def skip_line(text):
@@ -84,7 +94,7 @@ def repos_around(d):
         d = parent
 
 
-def preflight(repo=None):
+def preflight(repo=None, needs_codex=True):
     """Drop PATH entries that are relative or inside --repo or any repo around it or the
     cwd (an activated `.venv/bin`): the repo under review must not supply codex or git,
     which run with Claude's rights before any sandbox applies."""
@@ -99,6 +109,8 @@ def preflight(repo=None):
     dirs = [d for d in os.environ.get("PATH", "").split(os.pathsep)
             if os.path.isabs(d) and not untrusted.intersection(ancestors(d)[0])]
     os.environ["PATH"] = os.pathsep.join(dirs)  # git and codex's children too
+    if not needs_codex:
+        return
     CODEX = shutil.which("codex")
     if not CODEX:
         raise Skip("codex not installed")
@@ -159,9 +171,10 @@ def resume(a, prompt):
     return f"thread: {thread}\n{message}"
 
 
-def git(*args):
+def git(*args, cwd=None, stdin=b""):
     # no repo-configured hooks or fsmonitor: they would run on the host, with Claude's rights
-    p = run(["git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", *args])
+    p = run(["git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", *args],
+            stdin, cwd=cwd)
     if p.returncode != 0:
         # fixed text: git's stderr can carry a remote URL with credentials, and this goes in PRs
         raise Skip(f"git {args[0]} failed")
@@ -203,6 +216,147 @@ def review(a, _prompt):
     return f"Codex review of {base[:12]}..{head[:12]}\n{text}"
 
 
+DOCS_SCHEMA = {
+    "type": "object", "additionalProperties": False, "required": ["files"],
+    "properties": {"files": {"type": "array", "minItems": 1, "items": {
+        "type": "object", "additionalProperties": False, "required": ["path", "text"],
+        "properties": {"path": {"type": "string"}, "text": {"type": "string"}}}}}}
+DOCS_INSTRUCTION = """You are proposing documentation changes. You cannot write files.
+Your final message must be exactly one JSON object and nothing else:
+{"files": [{"path": "<path relative to the repo root>", "text": "<complete new content>"}]}
+Only .md files. Never files under docs/adr/, never SKILL.md, CLAUDE.md or AGENTS.md, never
+anything under a directory starting with a dot. Give each file's complete new text.
+
+The task:
+"""
+AGENT_FILES = {"skill.md", "claude.md", "agents.md"}  # they steer agents: code, in this repo
+MAX_TEXT = 200_000
+
+
+def repo_root(repo):
+    if not repo or not os.path.isdir(repo):
+        raise Skip("--repo is not a directory")
+    return os.path.realpath(git("rev-parse", "--show-toplevel", cwd=repo))
+
+
+def path_problem(root, path):
+    """Why `path` may not be written by Codex, or None. Rules from ADR 0009."""
+    if not isinstance(path, str) or not path:
+        return "path is not a non-empty string"
+    if "\\" in path or "\0" in path or os.path.isabs(path):
+        return "path must be relative, without backslashes or NUL"
+    parts = path.split("/")
+    if any(x in ("", ".", "..") for x in parts):
+        return "path has an empty, '.' or '..' part"
+    low = path.casefold()  # this Mac's disk is case-insensitive
+    if not low.endswith(".md"):
+        return "only .md files"
+    if low.startswith("docs/adr/"):
+        return "docs/adr/ stays with the owner and Claude"
+    if parts[-1].casefold() in AGENT_FILES:
+        return "SKILL.md, CLAUDE.md and AGENTS.md steer agents: Claude writes those"
+    if any(x.startswith(".") for x in parts):
+        return "nothing under a dot directory"
+    full = root
+    for x in parts:
+        full = os.path.join(full, x)
+        if os.path.islink(full):
+            return "a part of the path is a symlink"
+    if os.path.commonpath([root, os.path.realpath(full)]) != root:
+        return "path leaves the repo"
+    if os.path.lexists(full):
+        st = os.lstat(full)
+        if not stat.S_ISREG(st.st_mode) or st.st_mode & 0o111:
+            return "existing target is not a plain, non-executable file"
+        try:
+            tracked = git("ls-files", "--", path, cwd=root)
+        except Skip:
+            tracked = ""
+        if tracked != path:  # also catches readme.md standing in for README.md
+            return "existing file is not tracked by git under exactly this name"
+    return None
+
+
+def label(path):
+    return repr(path)[:80]  # Codex-supplied text: bounded, quoted
+
+
+def unified(path, old, new):
+    """A git-applyable diff for one file, built here: Codex writes no patch metadata."""
+    out = [f"diff --git a/{path} b/{path}\n"]
+    if old is None:
+        out.append("new file mode 100644\n")
+    a_name = "/dev/null" if old is None else f"a/{path}"
+    for line in difflib.unified_diff((old or "").splitlines(keepends=True),
+                                     new.splitlines(keepends=True), a_name, f"b/{path}"):
+        out.append(line if line.endswith("\n") else line + "\n\\ No newline at end of file\n")
+    return "".join(out)
+
+
+def docs(a, prompt):
+    root = repo_root(a.repo)
+    fd, schema = tempfile.mkstemp(suffix=".json")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(DOCS_SCHEMA, f)
+        _, message = codex_exec(["--output-schema", schema],
+                                DOCS_INSTRUCTION.encode() + prompt, root)
+    finally:
+        os.remove(schema)
+    try:
+        files = json.loads(message)["files"]
+        assert isinstance(files, list) and files
+    except (ValueError, KeyError, TypeError, AssertionError):
+        raise Rejected(["the reply is not one JSON object with a non-empty files list"])
+    problems, seen, patch = [], set(), []
+    for f in files:
+        path, text = (f.get("path"), f.get("text")) if isinstance(f, dict) else (None, None)
+        why = path_problem(root, path)
+        if not why and path.casefold() in seen:
+            why = "listed twice"
+        if not why and (not isinstance(text, str) or len(text.encode()) > MAX_TEXT):
+            why = f"text is not a string of at most {MAX_TEXT} bytes"
+        if why:
+            problems.append(f"{label(path)}: {why}")
+            continue
+        seen.add(path.casefold())
+        full = os.path.join(root, path)
+        old = open(full, encoding="utf-8").read() if os.path.exists(full) else None
+        if old != text:
+            patch.append(unified(path, old, text))
+    if problems:
+        raise Rejected(problems)
+    if not patch:
+        raise Rejected(["no file would change"])
+    body = "".join(patch).encode()
+    git("apply", "--check", "-", cwd=root, stdin=body)
+    fd, out = tempfile.mkstemp(prefix="codex-docs-", suffix=".patch")  # 0600
+    with os.fdopen(fd, "wb") as f:
+        f.write(body)
+    return (f"repo: {root}\npatch: {out}\nsha256: {hashlib.sha256(body).hexdigest()}\n"
+            f"{git('apply', '--stat', '-', cwd=root, stdin=body)}\n\n{body.decode()}")
+
+
+def docs_apply(a, _prompt):
+    root = repo_root(a.repo)
+    try:
+        body = open(a.patch, "rb").read()
+    except OSError:
+        raise Skip("patch file not readable")
+    if hashlib.sha256(body).hexdigest() != a.sha256:
+        raise Rejected(["patch changed since it was checked (SHA-256 mismatch)"])
+    # from our own `diff --git a/P b/P` headers (content lines start with ' ', '+' or '-')
+    heads = [ln[len("diff --git a/"):] for ln in body.decode("utf-8", "replace").split("\n")
+             if ln.startswith("diff --git a/")]
+    paths = [h[:(len(h) - 3) // 2] for h in heads]
+    problems = [f"{label(p)}: {why}" for p in paths if (why := path_problem(root, p))]
+    if problems or not paths:
+        raise Rejected(problems or ["patch names no file"])
+    git("apply", "-", cwd=root, stdin=body)
+    os.remove(a.patch)
+    return f"applied to {root}: " + ", ".join(paths)
+
+
 class Parser(argparse.ArgumentParser):
     def error(self, message):
         raise Skip("bad arguments")  # fixed: argparse would echo a mistyped prompt
@@ -221,12 +375,20 @@ def main(argv):
     p = sub.add_parser("review")
     p.add_argument("--base", default="origin/main")
     p.set_defaults(fn=review, reads_prompt=False)
+    p = sub.add_parser("docs")
+    p.add_argument("--repo", required=True)
+    p.set_defaults(fn=docs, reads_prompt=True)
+    p = sub.add_parser("docs-apply")
+    p.add_argument("--repo", required=True)
+    p.add_argument("--sha256", required=True)
+    p.add_argument("patch")
+    p.set_defaults(fn=docs_apply, reads_prompt=False, needs_codex=False)
     try:
         a = ap.parse_args(argv)
         prompt = sys.stdin.buffer.read() if a.reads_prompt else b""
         if a.reads_prompt and not prompt.strip():
             raise Skip("empty prompt on stdin")
-        preflight(getattr(a, "repo", None))
+        preflight(getattr(a, "repo", None), getattr(a, "needs_codex", True))
         print(a.fn(a, prompt))
         return 0
     except Skip as e:
@@ -235,6 +397,11 @@ def main(argv):
     except Rerun as e:
         print(f"Codex: rerun ({e})")
         return RERUN
+    except Rejected as e:
+        print("Codex docs: rejected, nothing written")
+        for why in e.args[0]:
+            print(f"- {why}")
+        return REJECTED
 
 
 def self_test():
@@ -443,6 +610,88 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
                                 "sys.stdout.write("))
         rc, text, _ = call(["review", "--base", "main"], stdout="x")
         assert rc == RERUN and "changed during the review" in text, text
+        with open(fake, "w") as f:
+            f.write(src)  # the plain fake again
+
+        # docs (ADR 0009): a throwaway repo with every kind of path the rules care about
+        d = os.path.join(tmp, "docsrepo")
+        gd = ["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@t",
+              "-c", "commit.gpgsign=false"]
+        subprocess.run(["git", "init", "-q", "-b", "main", d], check=True)
+        for name, text in {"README.md": "old\n", "docs/guide.md": "g\n", "docs/x.sh": "x\n",
+                           "docs/adr/0001-a.adr": "a\n", "docs/adr/README.md": "i\n",
+                           "plugins/s/SKILL.md": "s\n", "CLAUDE.md": "c\n",
+                           ".github/x.md": "h\n", "run.md": "r\n",
+                           "real/inner.md": "n\n"}.items():
+            os.makedirs(os.path.dirname(os.path.join(d, name)) or d, exist_ok=True)
+            with open(os.path.join(d, name), "w") as f:
+                f.write(text)
+        os.chmod(os.path.join(d, "run.md"), 0o755)
+        os.symlink("real", os.path.join(d, "linkdir"))
+        os.symlink("README.md", os.path.join(d, "alias.md"))
+        subprocess.run(gd + ["add", "-A"], check=True)
+        subprocess.run(gd + ["commit", "-q", "-m", "init"], check=True)
+        with open(os.path.join(d, "untracked.md"), "w") as f:
+            f.write("u\n")
+
+        def proposal(*files):
+            msg = json.dumps({"files": [{"path": p, "text": t} for p, t in files]})
+            return events.replace(json.dumps("fin\u2028al", ensure_ascii=False)[1:-1],
+                                  msg.replace("\\", "\\\\").replace('"', '\\"'))
+
+        rc, text, seen = call(["docs", "--repo", d], "update the readme",
+                              stdout=proposal(("README.md", "new\n"), ("docs/new.md", "hi")))
+        assert rc == 0, text
+        assert has_fixed(seen["argv"]) and "--output-schema" in seen["argv"], seen["argv"]
+        assert seen["stdin"].endswith("update the readme") and "JSON" in seen["stdin"]
+        assert "-old\n+new" in text and "new file mode 100644" in text, text
+        assert "\\ No newline at end of file" in text, text
+        patch = text.split("patch: ")[1].split("\n")[0]
+        digest = text.split("sha256: ")[1].split("\n")[0]
+        assert stat.S_IMODE(os.stat(patch).st_mode) == 0o600
+        assert open(os.path.join(d, "README.md")).read() == "old\n", "docs must write nothing"
+
+        bad = {"x.py": "only .md", "docs/x.sh": "only .md",
+               "DOCS/ADR/0002.md": "docs/adr/", "docs/adr/README.md": "docs/adr/",
+               "plugins/s/SKILL.md": "steer agents", "CLAUDE.md": "steer agents",
+               "sub/agents.MD": "steer agents", ".github/x.md": "dot directory",
+               "../x.md": "'..'", "/abs.md": "relative", "a\\b.md": "relative",
+               "linkdir/inner.md": "symlink", "alias.md": "symlink",
+               "run.md": "non-executable", "untracked.md": "not tracked",
+               "readme.md": "exactly this name"}
+        for path, why in bad.items():
+            if path == "readme.md" and not os.path.exists(os.path.join(d, "readme.md")):
+                continue  # case-sensitive disk: readme.md is simply a new file there
+            rc, text, _ = call(["docs", "--repo", d], "t", stdout=proposal((path, "x\n")))
+            assert rc == REJECTED and why in text, (path, text)
+        for reply, why in ((proposal(("a.md", "1"), ("A.md", "2")), "listed twice"),
+                           (proposal(), "non-empty files list"),
+                           (events.replace("fin\u2028al", "not json"), "not one JSON"),
+                           (events.replace("fin\u2028al", 'Here: {\\"files\\": []}'),
+                            "not one JSON"),
+                           (proposal(("README.md", "old\n")), "no file would change")):
+            rc, text, _ = call(["docs", "--repo", d], "t", stdout=reply)
+            assert rc == REJECTED and why in text, (why, text)
+
+        # docs-apply: refuses a changed patch, re-checks the tree, then applies
+        with open(patch, "ab") as f:
+            f.write(b" ")
+        rc, text, _ = call(["docs-apply", "--repo", d, "--sha256", digest, patch])
+        assert rc == REJECTED and "SHA-256" in text, text
+        rc, text, _ = call(["docs", "--repo", d], "t",
+                           stdout=proposal(("README.md", "new\n"), ("docs/new.md", "hi")))
+        patch = text.split("patch: ")[1].split("\n")[0]
+        digest = text.split("sha256: ")[1].split("\n")[0]
+        os.chmod(os.path.join(d, "README.md"), 0o755)  # the tree changed after the check
+        rc, text, _ = call(["docs-apply", "--repo", d, "--sha256", digest, patch])
+        assert rc == REJECTED and "non-executable" in text, text
+        os.chmod(os.path.join(d, "README.md"), 0o644)
+        rc, text, _ = call(["docs-apply", "--repo", d, "--sha256", digest, patch],
+                           PATH="/usr/bin")  # git, and no codex: docs-apply needs none
+        assert rc == 0, text
+        assert open(os.path.join(d, "README.md")).read() == "new\n"
+        assert open(os.path.join(d, "docs/new.md")).read() == "hi"
+        assert not os.path.exists(patch)
     finally:
         os.chdir(cwd)
         shutil.rmtree(tmp)
