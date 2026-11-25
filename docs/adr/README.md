@@ -12,3 +12,4 @@ Format and lifecycle: `docs/adr/NNNN-short-title.adr`, statuses Proposed, Accept
 | [0006](0006-codex-read-only-second-agent.adr) | Codex is a read-only second agent, called through its CLI | Accepted |
 | [0007](0007-where-codex-runs-in-the-flow.adr) | Where Codex runs in the flow | Accepted |
 | [0008](0008-codex-calls-go-through-one-launcher.adr) | Codex calls go through one tested launcher | Accepted |
+| [0009](0009-codex-proposes-docs-as-file-text.adr) | Codex proposes docs as file text from a read-only session | Accepted |
