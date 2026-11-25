@@ -27,11 +27,15 @@ for _f in ("apps", "plugins", "remote_plugin", "browser_use", "browser_use_exter
            "hooks"):  # hooks run on the host, outside the sandbox
     FIXED += ["--disable", _f]
 UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
-SKIPPED = 3
+SKIPPED, RERUN = 3, 4
 
 
 class Skip(Exception):
-    pass
+    """Codex unavailable or failed: record the skip line and carry on."""
+
+
+class Rerun(Exception):
+    """The review no longer matches the branch: fix what it says, then run it again."""
 
 
 def skip_line(text):
@@ -70,7 +74,8 @@ def last_message(stdout):
         if ev.get("type") == "item.completed" and isinstance(item, dict) \
                 and item.get("type") == "agent_message":
             text = item.get("text")
-            message = text if isinstance(text, str) and text.strip() else message
+            # the last agent message is the answer; a blank one means no answer
+            message = text if isinstance(text, str) and text.strip() else None
     return thread, message
 
 
@@ -116,7 +121,7 @@ def review(a, _prompt):
         raise Skip("base must be a ref")
     # codex reviews `git diff <base>`, which includes uncommitted edits: the header would lie
     if git("status", "--porcelain", "--untracked-files=no"):
-        raise Skip("uncommitted changes; commit them before the review")
+        raise Rerun("uncommitted changes; commit them, then run the review again")
     remote, _, branch = a.base.partition("/")
     if branch and remote in git("remote").split():
         # git's own ref rules (no ':', '..', spaces...), and no leading '-' that fetch could
@@ -141,7 +146,7 @@ def review(a, _prompt):
     if not text:
         raise Skip("codex review printed nothing")
     if git("rev-parse", "HEAD") != head or git("status", "--porcelain", "--untracked-files=no"):
-        raise Skip("the branch changed during the review; run it again")
+        raise Rerun("the branch changed during the review; run it again")
     return f"Codex review of {base[:12]}..{head[:12]}\n{text}"
 
 
@@ -174,6 +179,9 @@ def main(argv):
     except Skip as e:
         print(skip_line(e))
         return SKIPPED
+    except Rerun as e:
+        print(f"Codex: rerun ({e})")
+        return RERUN
 
 
 def self_test():
@@ -288,6 +296,9 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
         {"type": "item.completed", "item": {"type": "agent_message", "text": {"x": 1}}},
         {"type": "item.completed", "item": {"type": "agent_message", "text": "  "}}, [1]])
     skipped(*call(["ask"], "q", stdout=odd)[:2], "no final message")
+    blank_last = events.replace('"fin\u2028al"', '""')
+    assert blank_last != events
+    skipped(*call(["ask"], "q", stdout=blank_last)[:2], "no final message")
     rc, text, _ = call(["ask"], "q", stdout=events.replace(tid, "garbage"))
     skipped(rc, text, "no valid thread id")
     rc, text, _ = call(["ask"], "q", FAKE_RC="1", FAKE_ERR="user prompt secret\nreal error\n")
@@ -328,7 +339,8 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
         with open(os.path.join(repo, "t.txt"), "w") as f:
             f.write("x")
         subprocess.run(g + ["add", "t.txt"], check=True)
-        skipped(*call(["review", "--base", "main"])[:2], "uncommitted changes")
+        rc, text, _ = call(["review", "--base", "main"])
+        assert rc == RERUN and text.startswith("Codex: rerun (uncommitted"), text
         subprocess.run(g + ["commit", "-q", "-m", "t"], check=True)
         skipped(*call(["review", "--base=--output=x"])[:2], "must be a ref")
         skipped(*call(["review", "--base", "main"], stdout="")[:2], "printed nothing")
@@ -340,12 +352,14 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
             f.write(src.replace("sys.stdout.write(", "import subprocess; subprocess.run(['git', "
                                 "'-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', "
                                 "'--allow-empty', '-m', 'moved'], check=True); sys.stdout.write("))
-        skipped(*call(["review", "--base", "main"], stdout="x")[:2], "changed during the review")
+        rc, text, _ = call(["review", "--base", "main"], stdout="x")
+        assert rc == RERUN and "changed during the review" in text, text
         # a tracked file edited (HEAD unchanged) while "codex" runs
         with open(fake, "w") as f:
             f.write(src.replace("sys.stdout.write(", "open('t.txt', 'a').write('y'); "
                                 "sys.stdout.write("))
-        skipped(*call(["review", "--base", "main"], stdout="x")[:2], "changed during the review")
+        rc, text, _ = call(["review", "--base", "main"], stdout="x")
+        assert rc == RERUN and "changed during the review" in text, text
     finally:
         os.chdir(cwd)
         shutil.rmtree(tmp)

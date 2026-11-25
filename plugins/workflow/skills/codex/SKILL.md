@@ -50,6 +50,9 @@ works from any directory. Never call `codex` directly for these.
   Codex's final message. Copy the review header line into `## Codex review`.
 - Exit 3 prints only `Codex: skipped (<reason>)`: Codex was unavailable or the call failed.
   Write that line where the result would have gone and carry on. Codex never blocks work.
+- Exit 4 prints `Codex: rerun (<reason>)`: the review would not match the branch (uncommitted
+  changes, or the branch changed meanwhile). Not a skip: do what it says and run the review
+  again; never push on it.
 - Never use `--dangerously-bypass-approvals-and-sandbox`, `--trust`, `workspace-write`
   outside the docs case, or `danger-full-access`.
 - Prompts: say what to look at, that it's read-only, and the answer shape you want

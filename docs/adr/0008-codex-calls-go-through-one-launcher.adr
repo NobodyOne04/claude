@@ -49,19 +49,22 @@ retypes on each call. Approved by the owner on 2026-11-25.
   reports it as skipped (fails closed). The script has no way to pass
   `--dangerously-bypass-approvals-and-sandbox`, `--full-auto`, `workspace-write` or
   `danger-full-access`.
-- **Output contract, all three subcommands**: success prints `thread: <id>` (ask/resume) or
-  the review header, then Codex's final message, nothing else. Any failure (not installed,
-  `codex login status` not logged in, fetch or `rev-parse` failure, non-zero exit, no final
-  message, `HEAD` moved) prints only `Codex: skipped (<reason>)`, one line of at most 200
-  chars with home paths shortened to `~`, and exits 3. Reasons are fixed text (`codex exited 1`,
-  `git fetch failed`), never child stderr: Codex echoes the prompt there, and git can print a
-  remote URL with credentials, and this line goes into PR bodies. Bad arguments give the same
-  skip line. `review` also refuses uncommitted tracked changes before and after the call,
-  because `codex review --base` reviews the working tree, and the header must name what was
-  reviewed. A remote base is fetched as `refs/heads/<branch>` (name checked, no `:` or leading
-  `-`) into a per-run ref (`refs/codex-review/<pid>`, deleted after), so a concurrent fetch
-  can't swap the base. That is the line
-  [0007](0007-where-codex-runs-in-the-flow.adr) asks Claude to record.
+- **Output contract, all three subcommands**:
+  - Success: `thread: <id>` (ask/resume, a valid UUID) or the review header, then Codex's
+    last agent message (a blank last message counts as none), nothing else. Exit 0.
+  - Skip: not installed, not logged in, bad arguments, a git failure, a non-zero exit, or no
+    final message. Prints only `Codex: skipped (<reason>)`, at most 200 chars, and exits 3.
+    That is the line [0007](0007-where-codex-runs-in-the-flow.adr) asks Claude to record.
+    Reasons are fixed text (`codex exited 1`, `git fetch failed`), never child stderr or
+    arguments: Codex echoes the prompt on stderr, git can print a remote URL with
+    credentials, and this line goes into PR bodies.
+  - Rerun (`review` only): uncommitted tracked changes before or after the call, or `HEAD`
+    moved. `codex review --base` reviews the working tree, and the header must name exactly
+    what was reviewed. Prints `Codex: rerun (<reason>)` and exits 4. Not a skip: Claude fixes
+    it and runs the review again.
+  - A remote base is checked with `git check-ref-format` (plus no leading `-`) and fetched as
+    `refs/heads/<branch>` into a per-run ref (`refs/codex-review/<pid>`, deleted after), so a
+    concurrent fetch can't swap it.
 - **Self-test** (`--test`, per [0004](0004-stdlib-python-scripts-with-self-tests.adr)), in
   `make check`: a fake `codex` first on `PATH` records argv and stdin and replays canned
   JSONL. It asserts that every subcommand gets all fixed flags, the prompt reaches stdin
