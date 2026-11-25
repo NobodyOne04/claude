@@ -54,33 +54,50 @@ def run(cmd, stdin=b"", cwd=None):
 CODEX = None  # absolute path, set once by preflight()
 
 
-def enclosing_repo(d):
-    """The repo around d (not d itself: from ~, ~/.local/bin stays trusted). Found by
-    walking up for .git, not by running git, which would search the untrusted PATH."""
-    d = os.path.realpath(d)
+def ancestors(d):
+    """d and every parent, as filesystem identities: on a case-insensitive Mac, `CLAUDE`
+    and `claude` are the same directory, which no string comparison sees."""
+    d, ids = os.path.realpath(d), []
     while True:
-        if os.path.exists(os.path.join(d, ".git")):
-            return d
+        try:
+            st = os.stat(d)
+            ids.append((st.st_dev, st.st_ino))
+        except OSError:
+            pass  # a PATH entry that doesn't exist: its parents still count
         parent = os.path.dirname(d)
         if parent == d:
-            return None
+            return ids, d
+        d = parent
+
+
+def repos_around(d):
+    """Every repo containing d, nested ones included, found by looking for .git, not by
+    running git, which would search the untrusted PATH. A non-repo d (like ~) adds none,
+    so ~/.local/bin stays trusted."""
+    found, d = [], os.path.realpath(d)
+    while True:
+        if os.path.exists(os.path.join(d, ".git")):
+            found.append(d)
+        parent = os.path.dirname(d)
+        if parent == d:
+            return found
         d = parent
 
 
 def preflight(repo=None):
-    """Drop PATH entries that are relative or inside --repo or the cwd's repo (an activated
-    `.venv/bin`): the repo under review must not supply codex or git, which run with
-    Claude's rights before any sandbox applies."""
+    """Drop PATH entries that are relative or inside --repo or any repo around it or the
+    cwd (an activated `.venv/bin`): the repo under review must not supply codex or git,
+    which run with Claude's rights before any sandbox applies."""
     global CODEX
-    # --repo may be a subfolder: its whole enclosing repo is untrusted too
-    candidates = (enclosing_repo(os.getcwd()), repo, repo and enclosing_repo(repo))
-    roots = [os.path.realpath(r) for r in candidates if r]
-
-    def trusted(d):
-        d = os.path.realpath(d)
-        return not any(d == r or d.startswith(r + os.sep) for r in roots)
+    untrusted = set()
+    for r in repos_around(os.getcwd()) + ([repo] + repos_around(repo) if repo else []):
+        try:
+            st = os.stat(r)
+            untrusted.add((st.st_dev, st.st_ino))
+        except OSError:
+            pass
     dirs = [d for d in os.environ.get("PATH", "").split(os.pathsep)
-            if os.path.isabs(d) and trusted(d)]
+            if os.path.isabs(d) and not untrusted.intersection(ancestors(d)[0])]
     os.environ["PATH"] = os.pathsep.join(dirs)  # git and codex's children too
     CODEX = shutil.which("codex")
     if not CODEX:
@@ -346,6 +363,10 @@ sys.exit(int(os.environ.get("FAKE_RC", "0")))
     shutil.copytree(os.path.dirname(fake), venv)
     skipped(*call(["ask", "--repo", os.path.join(outer, "sub")], "q", PATH=venv)[:2],
             "not installed")
+    alias = venv.replace(os.path.join(tmp, "outer"), os.path.join(tmp, "OUTER"))
+    if os.path.exists(alias):  # case-insensitive volume (macOS default)
+        skipped(*call(["ask", "--repo", os.path.join(outer, "sub")], "q", PATH=alias)[:2],
+                "not installed")
     # an absolute entry inside --repo (an activated .venv) is ignored too
     skipped(*call(["ask", "--repo", tmp], "q", PATH=os.path.dirname(fake))[:2], "not installed")
     long = skip_line(os.path.expanduser("~") + "/x\n" + "y" * 500)
