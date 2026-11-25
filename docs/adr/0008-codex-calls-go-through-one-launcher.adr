@@ -1,0 +1,100 @@
+# 0008. Codex calls go through one tested launcher
+
+- Status: Accepted
+- Date: 2026-11-25
+
+Claude's read-only Codex calls (ask, continue, review) go through one stdlib-Python script
+that sets the safety flags itself, so the read-only guarantee from
+[0006](0006-codex-read-only-second-agent.adr) is code with a self-test, not a table Claude
+retypes on each call. Approved by the owner on 2026-11-25.
+
+## Technical details
+- **Problem**: the `codex` skill on `main` lists four commands with different spellings of
+  the sandbox flag and no approval policy. On 2026-11-25 that let Codex's auto-reviewer
+  (`approvals_reviewer = "auto_review"` in my config) approve a write out of `-s read-only`.
+  PR #22 (open) adds `approval_policy="never"` and `--skip-git-repo-check` to the table, but
+  it is still a table: nothing tests it, and every new caller can get it wrong again.
+- **Decision**: one launcher, `plugins/workflow/skills/codex/codex.py`, the only way Claude
+  makes read-only Codex calls. Claude runs it from any working directory as
+  `python3 -I <codex skill dir>/codex.py <cmd> ...`. The skill's command table becomes these
+  subcommands. The docs command stays as PR #22 leaves it until
+  [0009](0009-codex-proposes-docs-as-file-text.adr) replaces it in its own PR.
+- **Subcommands**:
+  - `ask [--repo DIR]`: new thread, `codex exec --json ... -`. The prompt is read from the
+    launcher's stdin and written byte-for-byte to the child's stdin, never put on a command
+    line. Claude sends it with a quoted heredoc whose delimiter is `CODEX_PROMPT_END`,
+    a string the skill tells Claude never to put inside a prompt. `--repo DIR` runs Codex
+    with `DIR` as its working directory (repo questions read that repo's files and
+    `AGENTS.md`; `exec resume` has no `-C`, so the launcher sets the cwd for both). Every call passes
+    `--skip-git-repo-check`: it grants nothing, and lets `--repo` name a folder that isn't a
+    git repo.
+  - `resume THREAD_ID [--repo DIR]`: `codex exec resume --json ... THREAD_ID -`, same stdin
+    and `--repo` handling. `THREAD_ID` must match a UUID regex, so it can never be parsed as
+    an option.
+  - `review [--base REF]` (default `origin/main`), run from the repo root: fetches the
+    remote and branch named in `REF`, resolves `base` and `HEAD` with `git rev-parse`, runs
+    `codex review --base <base-sha>`, then checks `HEAD` is unchanged. Only on success does it
+    print `Codex review of <base-sha>..<head-sha>` first; Claude copies that line into the
+    PR's `## Codex review`, so a review of an older commit is visible.
+- **Fixed flags, every call**: `-c sandbox_mode="read-only"`, `-c approval_policy="never"`,
+  `-c mcp_servers={}` (0.172.0 accepts it; no MCP servers or Codex plugins are installed
+  today, and this keeps a future one out of Claude's calls), and `--disable` for the
+  built-in features whose tools act outside the sandbox: `apps`, `plugins`, `remote_plugin`,
+  `browser_use`, `browser_use_external`, `computer_use`, `image_generation`,
+  `skill_mcp_dependency_install`, `tool_suggest`, and `hooks` (user hooks run on the host,
+  outside the sandbox). The live probe found that `apps` alone
+  gave a "read-only" session ChatGPT connector tools that deploy sites, trash pages and change
+  sharing, settings and env vars; `mcp_servers={}` doesn't remove them. No command-line option can
+  remove or change them. If Codex rejects any of them, the call fails, and the launcher
+  reports it as skipped (fails closed). The script has no way to pass
+  `--dangerously-bypass-approvals-and-sandbox`, `--full-auto`, `workspace-write` or
+  `danger-full-access`.
+- **Output contract, all three subcommands**:
+  - Success: `thread: <id>` (ask/resume, a valid UUID) or the review header, then Codex's
+    last agent message (a blank last message counts as none), nothing else. Exit 0.
+  - Skip: not installed, not logged in, bad arguments, a git failure, a non-zero exit, or no
+    final message. Prints only `Codex: skipped (<reason>)`, at most 200 chars, and exits 3.
+    That is the line [0007](0007-where-codex-runs-in-the-flow.adr) asks Claude to record.
+    Reasons are fixed text (`codex exited 1`, `git fetch failed`), never child stderr or
+    arguments: Codex echoes the prompt on stderr, git can print a remote URL with
+    credentials, and this line goes into PR bodies.
+  - Rerun (`review` only): uncommitted tracked changes before or after the call, or `HEAD`
+    moved. `codex review --base` reviews the working tree, and the header must name exactly
+    what was reviewed. Prints `Codex: rerun (<reason>)` and exits 4. Not a skip: Claude fixes
+    it and runs the review again.
+  - A remote base is checked with `git check-ref-format` (plus no leading `-`) and fetched as
+    `refs/heads/<branch>` into a per-run ref (`refs/codex-review/<pid>`, deleted after), so a
+    concurrent fetch can't swap it.
+- **Self-test** (`--test`, per [0004](0004-stdlib-python-scripts-with-self-tests.adr)), in
+  `make check`: a fake `codex` first on `PATH` records argv and stdin and replays canned
+  JSONL. It asserts that every subcommand gets all fixed flags, the prompt reaches stdin
+  unchanged (including quotes, backticks and `$`), `--repo` sets the cwd, a non-UUID thread
+  id is refused, the thread id and final message are parsed, and each failure gives the skip
+  line and exit 3. Review runs in a throwaway git repo and checks its header and the
+  moved-`HEAD` case.
+- **Live probe**, recorded in the PR (CI has no Codex): in a temp dir the caller can write
+  to, ask Codex to create a file through `ask`, through `resume` of a thread started with
+  default settings, and through `review` with a prompt that asks it to. Each must fail with
+  "Operation not permitted" and leave the file absent. Before the probe, a control `touch`
+  by the caller itself must succeed, so a parent sandbox isn't what blocks the write. Also
+  record which tools Codex reports having in each mode.
+- **Files**: new `codex.py`; `codex` skill command table and wording; `make check` line;
+  workflow minor bump; CHANGELOG; CLAUDE.md layout line. Callers (`github-flow`,
+  `security-audit`, `adr-manager`) already defer to the `codex` skill and stay unchanged.
+  This replaces the command list in 0006 for these three calls; 0006's decision stands.
+- **Consequences**: one place to fix when Codex's CLI changes, safety flags tested in CI, no
+  shell quoting in prompts, reviews tied to commits. Cost: ~150 lines to maintain. If Codex
+  changes its JSONL event format, parsing breaks: the canned events in the self-test are the
+  reference, and the skip path keeps work unblocked.
+
+## Technologies and alternatives
+- Involved: Python 3 stdlib (`subprocess`, `json`, `argparse`, `re`), Codex CLI 0.172.0, git.
+- Alternatives:
+  - Command table, as fixed by PR #22: correct today, but untested, and it has already failed
+    once.
+  - A named profile in `~/.codex/config.toml` selected per call: lives outside this repo, so
+    every machine has to set it up and CI can't test it. Callers would still have to remember
+    the profile flag.
+  - Shell wrapper: JSON parsing and tests are awkward (why 0004 chose Python).
+  - Push hook that refuses a push without a review header for the current `HEAD`: stronger
+    enforcement, but a separate decision. Revisit if the header proves insufficient.

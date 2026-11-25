@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- workflow 0.12.0: `codex.py` launcher, the only way Claude calls Codex read-only (ask, resume, review): fixed sandbox, no approvals, no MCP servers, ChatGPT connectors and plugins disabled, prompt on stdin, self-tested in `make check` (ADR 0008)
+
 ### Fixed
 - workflow 0.11.1: `codex` skill runs from any directory (`--skip-git-repo-check`) and pins `approval_policy="never"` on every call, so Codex's auto-reviewer can no longer approve escalations out of the read-only sandbox
 - `make setup` on Arch: set the stable Rust toolchain as default before adding rust-analyzer (the `rustup` package ships none), and link its rust-analyzer into `~/.local/bin`
